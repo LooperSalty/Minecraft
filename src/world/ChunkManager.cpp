@@ -92,8 +92,8 @@ void ChunkManager::rebuildMesh(LoadedChunk& lc) {
     int cz = lc.chunk->getChunkZ();
     ChunkNeighbors nb = getNeighbors(cx, cz);
 
-    ChunkMesh mesh = ChunkMesher::generateMesh(*lc.chunk, nb);
-    lc.renderer.upload(mesh);
+    ChunkMeshPair meshPair = ChunkMesher::generateMesh(*lc.chunk, nb);
+    lc.renderer.upload(meshPair);
     lc.meshDirty = false;
 }
 
@@ -154,6 +154,32 @@ void ChunkManager::renderAll(const Shader& shader, const Frustum& frustum) const
         }
 
         lc.renderer.render();
+    }
+}
+
+void ChunkManager::renderTransparent(const Shader& shader, const Frustum& frustum) const {
+    for (const auto& [k, lc] : m_chunks) {
+        if (!lc.renderer.hasTransparentData()) {
+            continue;
+        }
+
+        int cx = lc.chunk->getChunkX();
+        int cz = lc.chunk->getChunkZ();
+
+        glm::vec3 minPt(
+            static_cast<float>(cx * CHUNK_WIDTH),
+            0.0f,
+            static_cast<float>(cz * CHUNK_DEPTH));
+        glm::vec3 maxPt(
+            static_cast<float>(cx * CHUNK_WIDTH + CHUNK_WIDTH),
+            static_cast<float>(CHUNK_HEIGHT),
+            static_cast<float>(cz * CHUNK_DEPTH + CHUNK_DEPTH));
+
+        if (!frustum.isBoxVisible(minPt, maxPt)) {
+            continue;
+        }
+
+        lc.renderer.renderTransparent();
     }
 }
 

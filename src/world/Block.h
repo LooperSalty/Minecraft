@@ -16,6 +16,13 @@ enum class BlockType : uint16_t {
     SnowBlock, Sandstone,
     // Phase 2 – vegetation & terrain variety
     TallGrass, Poppy, Dandelion, Cactus, Clay,
+    // Phase 2b – decorative blocks
+    Glass, Bricks, Bookshelf, TNT, Pumpkin, Melon,
+    CraftingTable, Furnace,
+    // Phase 2c – world generation blocks
+    MossyCobblestone, Ice, SnowLayer, Mycelium, Vine,
+    DeadBush, LilyPad, MushroomRed, MushroomBrown,
+    ChestBlock,
     COUNT
 };
 
@@ -40,5 +47,6 @@ const BlockData& getBlockData(BlockType type);
 bool isBlockOpaque(BlockType type);
 bool isBlockSolid(BlockType type);
 bool isBlockCross(BlockType type);
+bool isBlockTransparent(BlockType type);
 
 } // namespace voxelforge

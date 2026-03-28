@@ -8,7 +8,9 @@
 #include "world/Chunk.h"
 #include "world/Block.h"
 #include "player/PlayerController.h"
+#include "player/Inventory.h"
 #include "gui/TextRenderer.h"
+#include "gui/HudRenderer.h"
 #include "entity/EntityManager.h"
 
 #include <glad/gl.h>
@@ -25,7 +27,7 @@
 using namespace voxelforge;
 
 // --- Game states ---
-enum class GameState { MainMenu, Playing, Paused, Dead };
+enum class GameState { MainMenu, Playing, Paused, Dead, InventoryScreen };
 
 // --- Configuration ---
 static constexpr int64_t WORLD_SEED  = 12345;
@@ -106,6 +108,7 @@ struct WorldState {
     bool           creativeMode = false;
     bool           prevBreak    = false;
     bool           prevPlace    = false;
+    float          attackCooldown = 0.0f;
 
     WorldState()
         : camera(SPAWN_POS)
@@ -145,6 +148,9 @@ int main() {
     // --- GUI ---
     TextRenderer ui;
     ui.init(&lineShader);
+
+    HudRenderer hud;
+    hud.init(&ui);
 
     // --- Crosshair setup ---
     float crossSize = 0.02f;
@@ -194,6 +200,9 @@ int main() {
 
     // Mouse-click rising-edge for UI
     bool prevMouseLeft = false;
+
+    // Inventory screen state
+    int inventoryFirstClick = -1;
 
     // FPS tracking
     double lastTime  = glfwGetTime();
@@ -474,6 +483,21 @@ int main() {
                 break;
             }
 
+            // --- E -> Inventory screen ---
+            if (InputManager::isKeyJustPressed(GLFW_KEY_E)) {
+                state = GameState::InventoryScreen;
+                inventoryFirstClick = -1;
+                window.setCursorMode(GLFW_CURSOR_NORMAL);
+                break;
+            }
+
+            // --- Number keys 1-9 -> select hotbar slot ---
+            for (int k = 0; k < 9; ++k) {
+                if (InputManager::isKeyJustPressed(GLFW_KEY_1 + k)) {
+                    world->player.setSelectedSlot(k);
+                }
+            }
+
             // F1: wireframe toggle
             if (InputManager::isKeyJustPressed(GLFW_KEY_F1)) {
                 static bool wire = false;
@@ -529,14 +553,41 @@ int main() {
             world->camera.setPosition(world->player.getEyePosition());
             world->camera.setYawPitch(world->player.getYaw(), world->player.getPitch());
 
+            // --- Decrement attack cooldown ---
+            world->attackCooldown -= dt;
+            if (world->attackCooldown < 0.0f) world->attackCooldown = 0.0f;
+
             // --- Block break/place on rising edge ---
             bool curBreak = input.breakBlock;
             bool curPlace = input.placeBlock;
 
             if (curBreak && !world->prevBreak) {
-                world->player.breakBlock(
-                    [&](int bx, int by, int bz, BlockType bt) { world->chunkMgr.setBlock(bx, by, bz, bt); },
-                    blockAccessor);
+                // Try entity raycast first (combat)
+                bool hitEntity = false;
+                if (world->attackCooldown <= 0.0f) {
+                    glm::vec3 eyePos = world->player.getEyePosition();
+                    glm::vec3 front  = world->player.getFront();
+                    auto eHit = world->entityMgr.raycastEntity(eyePos, front, 5.0f);
+                    if (eHit.hit) {
+                        hitEntity = true;
+                        // Knockback direction: from player toward entity (horizontal)
+                        glm::vec3 knockDir = front;
+                        knockDir.y = 0.0f;
+                        float len = std::sqrt(knockDir.x * knockDir.x + knockDir.z * knockDir.z);
+                        if (len > 0.01f) {
+                            knockDir.x /= len;
+                            knockDir.z /= len;
+                        }
+                        world->entityMgr.damageEntity(eHit.entityIndex, 4.0f, knockDir);
+                        world->attackCooldown = 0.5f;
+                    }
+                }
+                // If no entity hit, proceed with block breaking
+                if (!hitEntity) {
+                    world->player.breakBlock(
+                        [&](int bx, int by, int bz, BlockType bt) { world->chunkMgr.setBlock(bx, by, bz, bt); },
+                        blockAccessor);
+                }
             }
             if (curPlace && !world->prevPlace) {
                 world->player.placeBlock(
@@ -600,6 +651,14 @@ int main() {
             atlas.bind(0);
             world->chunkMgr.renderAll(blockShader, world->frustum);
 
+            // --- Transparent pass (water, glass, ice) ---
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(GL_FALSE);
+            world->chunkMgr.renderTransparent(blockShader, world->frustum);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+
             // --- Entities ---
             world->entityMgr.render(vp);
 
@@ -628,32 +687,12 @@ int main() {
             glEnable(GL_DEPTH_TEST);
 
             // --- HUD overlay ---
-            {
-                float fw = static_cast<float>(w);
-                float fh = static_cast<float>(h);
-
-                // Health (top-left)
-                char hpText[32];
-                std::snprintf(hpText, sizeof(hpText), "HP: %.0f/20", world->player.getHealth());
-                ui.drawText(hpText, 10.0f, 10.0f, 2.0f, {1.0f, 0.2f, 0.2f, 1.0f}, w, h);
-
-                // Mode indicator (below HP)
-                ui.drawText(world->creativeMode ? "Creative" : "Survival",
-                            10.0f, 30.0f, 1.5f, {0.8f, 0.8f, 0.8f, 1.0f}, w, h);
-
-                // Entity count (top-right)
-                char mobText[32];
-                std::snprintf(mobText, sizeof(mobText), "Mobs: %d", world->entityMgr.getCount());
-                ui.drawText(mobText, fw - 150.0f, 10.0f, 1.5f, {1.0f, 1.0f, 1.0f, 0.8f}, w, h);
-
-                // Hotbar (bottom-center)
-                char slotText[64];
-                std::snprintf(slotText, sizeof(slotText), "[%d] %s",
-                              world->player.getSelectedSlot() + 1,
-                              getBlockData(world->player.getSelectedBlock()).name);
-                ui.drawTextCentered(slotText, fw / 2.0f, fh - 30.0f, 2.0f,
-                                    {1.0f, 1.0f, 1.0f, 1.0f}, w, h);
-            }
+            glDisable(GL_DEPTH_TEST);
+            hud.drawPlayingHUD(world->player, lastFps,
+                               world->chunkMgr.getLoadedCount(),
+                               world->entityMgr.getCount(),
+                               world->creativeMode, w, h);
+            glEnable(GL_DEPTH_TEST);
 
             // --- FPS counter & title bar ---
             ++frames;
@@ -714,6 +753,12 @@ int main() {
 
             atlas.bind(0);
             world->chunkMgr.renderAll(blockShader, world->frustum);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(GL_FALSE);
+            world->chunkMgr.renderTransparent(blockShader, world->frustum);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
             world->entityMgr.render(vp);
 
             // --- Dark overlay ---
@@ -775,6 +820,12 @@ int main() {
 
             atlas.bind(0);
             world->chunkMgr.renderAll(blockShader, world->frustum);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(GL_FALSE);
+            world->chunkMgr.renderTransparent(blockShader, world->frustum);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
             world->entityMgr.render(vp);
 
             // --- Red-tinted overlay ---
@@ -798,6 +849,85 @@ int main() {
                 state = GameState::Playing;
                 window.setCursorMode(GLFW_CURSOR_DISABLED);
                 InputManager::resetFirstMouse();
+            }
+
+            glEnable(GL_DEPTH_TEST);
+            break;
+        }
+
+        // =====================================================================
+        // INVENTORY SCREEN
+        // =====================================================================
+        case GameState::InventoryScreen: {
+            // E or Escape -> back to playing
+            if (InputManager::isKeyJustPressed(GLFW_KEY_E) ||
+                InputManager::isKeyJustPressed(GLFW_KEY_ESCAPE)) {
+                state = GameState::Playing;
+                inventoryFirstClick = -1;
+                window.setCursorMode(GLFW_CURSOR_DISABLED);
+                InputManager::resetFirstMouse();
+                break;
+            }
+
+            // --- Render frozen world behind ---
+            SkyState sky = computeSkyState(world->worldTime);
+            glClearColor(sky.skyColor.r, sky.skyColor.g, sky.skyColor.b, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            glm::mat4 vp = world->camera.getProjectionMatrix(window.getAspectRatio())
+                          * world->camera.getViewMatrix();
+
+            world->frustum.update(vp);
+
+            blockShader.use();
+            blockShader.setMat4("uViewProjection", vp);
+            blockShader.setVec3("uCameraPos", world->camera.getPosition());
+            blockShader.setFloat("uFogStart", FOG_START);
+            blockShader.setFloat("uFogEnd",   FOG_END);
+            blockShader.setFloat("uFogDensity", FOG_DENSITY);
+            blockShader.setVec3("uFogColor",  sky.fogColor);
+            blockShader.setVec3("uSunDirection", sky.sunDirection);
+            blockShader.setFloat("uTime", static_cast<float>(glfwGetTime()));
+            blockShader.setInt("uTextureAtlas", 0);
+
+            atlas.bind(0);
+            world->chunkMgr.renderAll(blockShader, world->frustum);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(GL_FALSE);
+            world->chunkMgr.renderTransparent(blockShader, world->frustum);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+            world->entityMgr.render(vp);
+
+            // --- Inventory overlay ---
+            glDisable(GL_DEPTH_TEST);
+
+            int clickedSlot = -1;
+            hud.drawInventoryScreen(world->player.getInventory(), w, h,
+                                    mousePos, mouseClick, clickedSlot);
+
+            // Handle slot clicking for swap
+            if (clickedSlot >= 0) {
+                if (inventoryFirstClick < 0) {
+                    inventoryFirstClick = clickedSlot;
+                } else {
+                    world->player.getInventory().swapSlots(inventoryFirstClick, clickedSlot);
+                    inventoryFirstClick = -1;
+                }
+            }
+
+            // Show selected slot indicator
+            if (inventoryFirstClick >= 0) {
+                const auto& sel = world->player.getInventory().getSlot(inventoryFirstClick);
+                if (!sel.isEmpty()) {
+                    const char* name = getBlockData(sel.type).name;
+                    char buf[64];
+                    std::snprintf(buf, sizeof(buf), "Moving: %s x%d", name, sel.count);
+                    ui.drawTextCentered(buf, static_cast<float>(w) / 2.0f,
+                                        static_cast<float>(h) - 20.0f, 2.0f,
+                                        {1.0f, 1.0f, 0.5f, 1.0f}, w, h);
+                }
             }
 
             glEnable(GL_DEPTH_TEST);

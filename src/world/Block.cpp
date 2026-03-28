@@ -42,6 +42,26 @@ static constexpr BlockData BLOCK_DATA[] = {
     {"dandelion",      false, false, 0,  {30, 30, 30, 30, 30, 30}},
     {"cactus",         true,  true,  0,  {31, 31, 31, 31, 31, 31}},
     {"clay",           true,  true,  0,  {32, 32, 32, 32, 32, 32}},
+    // Phase 2b – decorative blocks
+    {"glass",          false, true,  0,  {33, 33, 33, 33, 33, 33}},
+    {"bricks",         true,  true,  0,  {34, 34, 34, 34, 34, 34}},
+    {"bookshelf",      true,  true,  0,  {7,  7,  35, 35, 35, 35}},  // top/bottom=planks, sides=books
+    {"tnt",            true,  true,  0,  {37, 37, 36, 36, 36, 36}},  // top/bottom=gray cap, sides=red
+    {"pumpkin",        true,  true,  0,  {39, 39, 38, 38, 38, 38}},  // top=stem, sides=orange
+    {"melon",          true,  true,  0,  {41, 41, 40, 40, 40, 40}},  // top=tan, sides=green stripes
+    {"crafting_table", true,  true,  0,  {42, 7,  43, 43, 43, 43}},  // top=tool marks, bottom=planks, sides=regular
+    {"furnace",        true,  true,  0,  {0,  0,  44, 0,  0,  0 }},  // top/bottom=stone, north=furnace face, other sides=stone
+    // Phase 2c – world generation blocks
+    {"mossy_cobble",   true,  true,  0,  {45, 45, 45, 45, 45, 45}},
+    {"ice",            false, true,  0,  {46, 46, 46, 46, 46, 46}},
+    {"snow_layer",     false, false, 0,  {26, 26, 26, 26, 26, 26}},
+    {"mycelium",       true,  true,  0,  {47, 1,  48, 48, 48, 48}},
+    {"vine",           false, false, 0,  {49, 49, 49, 49, 49, 49}},
+    {"dead_bush",      false, false, 0,  {50, 50, 50, 50, 50, 50}},
+    {"lily_pad",       false, false, 0,  {51, 51, 51, 51, 51, 51}},
+    {"mushroom_red",   false, false, 0,  {52, 52, 52, 52, 52, 52}},
+    {"mushroom_brown", false, false, 0,  {53, 53, 53, 53, 53, 53}},
+    {"chest_block",    true,  true,  0,  {54, 54, 55, 55, 55, 55}},
 };
 
 const BlockData& getBlockData(BlockType type) {
@@ -55,7 +75,20 @@ bool isBlockSolid(BlockType type)  { return getBlockData(type).isSolid;  }
 bool isBlockCross(BlockType type) {
     return type == BlockType::TallGrass ||
            type == BlockType::Poppy ||
-           type == BlockType::Dandelion;
+           type == BlockType::Dandelion ||
+           type == BlockType::DeadBush ||
+           type == BlockType::MushroomRed ||
+           type == BlockType::MushroomBrown ||
+           type == BlockType::Vine;
+}
+
+bool isBlockTransparent(BlockType type) {
+    return type == BlockType::Water ||
+           type == BlockType::Glass ||
+           type == BlockType::OakLeaves ||
+           type == BlockType::BirchLeaves ||
+           type == BlockType::SpruceLeaves ||
+           type == BlockType::Ice;
 }
 
 } // namespace voxelforge

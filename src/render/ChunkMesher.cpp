@@ -46,41 +46,20 @@ static constexpr int NEIGHBOR[6][3] = {
     { 1, 0, 0}, {-1, 0, 0},
 };
 
-// AO corner offsets per face, per vertex (4 vertices x 2 side + 1 corner neighbor).
-// For each face, each corner vertex has three neighbors that contribute to AO:
-// two edge-adjacent blocks and one corner-diagonal block.
-// Axes for each face:
-//   Top(Y+):    tangent=X, bitangent=Z
-//   Bottom(Y-): tangent=X, bitangent=Z
-//   North(Z-):  tangent=X, bitangent=Y
-//   South(Z+):  tangent=X, bitangent=Y
-//   East(X+):   tangent=Z, bitangent=Y
-//   West(X-):   tangent=Z, bitangent=Y
-
-// For each face, for each of 4 vertices: offsets to 3 neighbors (side1, side2, corner)
-// relative to the block position, along the face's normal + tangent/bitangent.
-// side1, side2 are edge-adjacent, corner is the diagonal.
+// AO corner offsets per face, per vertex
 struct AOCornerOffsets {
     int side1[3];
     int side2[3];
     int corner[3];
 };
 
-// Top face (Y+): vertices are at y+1 plane
-// v0=(0,1,0) v1=(0,1,1) v2=(1,1,1) v3=(1,1,0)
 static constexpr AOCornerOffsets AO_TOP[4] = {
-    // v0 (0,1,0) - corner at (-X, +Y, -Z)
     {{-1,1,0}, {0,1,-1}, {-1,1,-1}},
-    // v1 (0,1,1) - corner at (-X, +Y, +Z)
     {{-1,1,0}, {0,1,1},  {-1,1,1}},
-    // v2 (1,1,1) - corner at (+X, +Y, +Z)
     {{1,1,0},  {0,1,1},  {1,1,1}},
-    // v3 (1,1,0) - corner at (+X, +Y, -Z)
     {{1,1,0},  {0,1,-1}, {1,1,-1}},
 };
 
-// Bottom face (Y-): vertices at y-1 plane
-// v0=(0,0,0) v1=(1,0,0) v2=(1,0,1) v3=(0,0,1)
 static constexpr AOCornerOffsets AO_BOTTOM[4] = {
     {{-1,-1,0}, {0,-1,-1}, {-1,-1,-1}},
     {{1,-1,0},  {0,-1,-1}, {1,-1,-1}},
@@ -88,8 +67,6 @@ static constexpr AOCornerOffsets AO_BOTTOM[4] = {
     {{-1,-1,0}, {0,-1,1},  {-1,-1,1}},
 };
 
-// North face (Z-): vertices at z-1 plane
-// v0=(0,1,0) v1=(1,1,0) v2=(1,0,0) v3=(0,0,0)
 static constexpr AOCornerOffsets AO_NORTH[4] = {
     {{-1,0,-1}, {0,1,-1},  {-1,1,-1}},
     {{1,0,-1},  {0,1,-1},  {1,1,-1}},
@@ -97,8 +74,6 @@ static constexpr AOCornerOffsets AO_NORTH[4] = {
     {{-1,0,-1}, {0,-1,-1}, {-1,-1,-1}},
 };
 
-// South face (Z+): vertices at z+1 plane
-// v0=(0,0,1) v1=(1,0,1) v2=(1,1,1) v3=(0,1,1)
 static constexpr AOCornerOffsets AO_SOUTH[4] = {
     {{-1,0,1}, {0,-1,1}, {-1,-1,1}},
     {{1,0,1},  {0,-1,1}, {1,-1,1}},
@@ -106,8 +81,6 @@ static constexpr AOCornerOffsets AO_SOUTH[4] = {
     {{-1,0,1}, {0,1,1},  {-1,1,1}},
 };
 
-// East face (X+): vertices at x+1 plane
-// v0=(1,1,0) v1=(1,1,1) v2=(1,0,1) v3=(1,0,0)
 static constexpr AOCornerOffsets AO_EAST[4] = {
     {{1,0,-1}, {1,1,0},  {1,1,-1}},
     {{1,0,1},  {1,1,0},  {1,1,1}},
@@ -115,8 +88,6 @@ static constexpr AOCornerOffsets AO_EAST[4] = {
     {{1,0,-1}, {1,-1,0}, {1,-1,-1}},
 };
 
-// West face (X-): vertices at x-1 plane
-// v0=(0,1,1) v1=(0,1,0) v2=(0,0,0) v3=(0,0,1)
 static constexpr AOCornerOffsets AO_WEST[4] = {
     {{-1,0,1},  {-1,1,0},  {-1,1,1}},
     {{-1,0,-1}, {-1,1,0},  {-1,1,-1}},
@@ -128,15 +99,12 @@ static const AOCornerOffsets* AO_FACE_TABLE[6] = {
     AO_TOP, AO_BOTTOM, AO_NORTH, AO_SOUTH, AO_EAST, AO_WEST,
 };
 
-// AO LUT: 0 neighbors occluding = 1.0, 1 = 0.7, 2 = 0.5, 3 = 0.2
 static constexpr float AO_LUT[4] = { 1.0f, 0.7f, 0.5f, 0.2f };
 
-// Compute vertex AO: count how many of side1, side2, corner are opaque.
-// If both sides are opaque, the corner is always occluded (count=3).
 static float computeVertexAO(bool side1, bool side2, bool corner) {
     int count = 0;
     if (side1 && side2) {
-        count = 3; // Both sides block the corner
+        count = 3;
     } else {
         if (side1) ++count;
         if (side2) ++count;
@@ -155,11 +123,13 @@ BlockType ChunkMesher::sampleBlock(const Chunk& chunk, const ChunkNeighbors& nb,
     return chunk.getBlock(x, y, z);
 }
 
-ChunkMesh ChunkMesher::generateMesh(const Chunk& chunk,
-                                     const ChunkNeighbors& neighbors) {
-    ChunkMesh mesh;
-    mesh.vertices.reserve(16384);
-    mesh.indices.reserve(24576);
+ChunkMeshPair ChunkMesher::generateMesh(const Chunk& chunk,
+                                         const ChunkNeighbors& neighbors) {
+    ChunkMeshPair result;
+    result.opaque.vertices.reserve(16384);
+    result.opaque.indices.reserve(24576);
+    result.transparent.vertices.reserve(4096);
+    result.transparent.indices.reserve(6144);
 
     for (int y = 0; y < CHUNK_HEIGHT; ++y) {
         for (int z = 0; z < CHUNK_DEPTH; ++z) {
@@ -170,13 +140,35 @@ ChunkMesh ChunkMesher::generateMesh(const Chunk& chunk,
                 const auto& bd = getBlockData(block);
                 glm::vec3 wp(chunk.toWorldPos(x, y, z));
 
+                bool transparent = isBlockTransparent(block);
+                bool isWater = (block == BlockType::Water);
+                float waterFlag = isWater ? 1.0f : (transparent ? 0.5f : 0.0f);
+
+                // Water surface is slightly lower
+                float yScale = isWater ? 0.875f : 1.0f;
+
+                ChunkMesh& targetMesh = transparent ? result.transparent : result.opaque;
+
                 for (int f = 0; f < 6; ++f) {
                     int nx = x + NEIGHBOR[f][0];
                     int ny = y + NEIGHBOR[f][1];
                     int nz = z + NEIGHBOR[f][2];
 
-                    if (!isBlockOpaque(sampleBlock(chunk, neighbors, nx, ny, nz))) {
-                        // Compute per-vertex AO for this face
+                    BlockType neighborBlock = sampleBlock(chunk, neighbors, nx, ny, nz);
+
+                    // For transparent blocks: don't cull face if neighbor is air
+                    // or a different block type. Do cull if neighbor is same type.
+                    bool shouldRender = false;
+                    if (transparent) {
+                        // Don't render face between same transparent blocks
+                        shouldRender = (neighborBlock != block) && !isBlockOpaque(neighborBlock);
+                        // Also render if neighbor is air
+                        if (neighborBlock == BlockType::Air) shouldRender = true;
+                    } else {
+                        shouldRender = !isBlockOpaque(neighborBlock);
+                    }
+
+                    if (shouldRender) {
                         const AOCornerOffsets* aoOffsets = AO_FACE_TABLE[f];
                         float aoValues[4];
 
@@ -196,20 +188,21 @@ ChunkMesh ChunkMesher::generateMesh(const Chunk& chunk,
                             aoValues[v] = computeVertexAO(s1, s2, cn);
                         }
 
-                        addFace(mesh, wp, static_cast<BlockFace>(f),
+                        addFace(targetMesh, wp, static_cast<BlockFace>(f),
                                 bd.textureIndices[f], FACES[f].brightness,
-                                aoValues);
+                                aoValues, waterFlag, yScale);
                     }
                 }
             }
         }
     }
-    return mesh;
+    return result;
 }
 
 void ChunkMesher::addFace(ChunkMesh& mesh, const glm::vec3& pos,
                            BlockFace face, uint8_t texIdx, float brightness,
-                           const float aoValues[4])
+                           const float aoValues[4], float waterFlag,
+                           float yScale)
 {
     int fi = static_cast<int>(face);
     const auto& ft = FACES[fi];
@@ -222,7 +215,7 @@ void ChunkMesher::addFace(ChunkMesh& mesh, const glm::vec3& pos,
     for (int i = 0; i < 4; ++i) {
         Vertex vtx;
         vtx.x  = pos.x + ft.pos[i][0];
-        vtx.y  = pos.y + ft.pos[i][1];
+        vtx.y  = pos.y + ft.pos[i][1] * yScale;
         vtx.z  = pos.z + ft.pos[i][2];
         vtx.u  = (ft.uv[i][0] < 0.5f) ? u0 : u1;
         vtx.v  = (ft.uv[i][1] < 0.5f) ? v0 : v1;
@@ -231,12 +224,10 @@ void ChunkMesher::addFace(ChunkMesh& mesh, const glm::vec3& pos,
         vtx.ny = ft.normal[1];
         vtx.nz = ft.normal[2];
         vtx.ao = aoValues[i];
+        vtx.isWater = waterFlag;
         mesh.vertices.push_back(vtx);
     }
 
-    // Use flipped quad triangulation when AO is anisotropic to avoid
-    // the diagonal artifact. If ao[0]+ao[2] > ao[1]+ao[3] use standard
-    // triangulation (0-1-2, 0-2-3), otherwise flip to (1-2-3, 1-3-0).
     if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
         mesh.indices.push_back(base + 0);
         mesh.indices.push_back(base + 1);

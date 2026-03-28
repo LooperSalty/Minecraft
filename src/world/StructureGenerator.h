@@ -15,6 +15,9 @@ public:
     static void generateVegetation(Chunk& chunk, int64_t seed,
                                    const BiomeGenerator& biomes,
                                    const TerrainGenerator& terrain);
+    static void generateStructures(Chunk& chunk, int64_t seed,
+                                   const BiomeGenerator& biomes,
+                                   const TerrainGenerator& terrain);
 };
 
 } // namespace voxelforge

@@ -16,6 +16,7 @@ public:
 
     void update(const glm::vec3& playerPos);
     void renderAll(const Shader& shader, const Frustum& frustum) const;
+    void renderTransparent(const Shader& shader, const Frustum& frustum) const;
 
     Chunk* getChunk(int cx, int cz) const;
     int getLoadedCount() const { return static_cast<int>(m_chunks.size()); }

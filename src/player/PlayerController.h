@@ -1,5 +1,6 @@
 #pragma once
 #include "../world/Block.h"
+#include "Inventory.h"
 #include <glm/glm.hpp>
 #include <functional>
 
@@ -33,9 +34,14 @@ public:
     void breakBlock(BlockSetter setBlock, BlockAccessor getBlock);
     void placeBlock(BlockSetter setBlock, BlockAccessor getBlock);
 
-    // Hotbar
+    // Inventory access
+    Inventory&       getInventory()       { return m_inventory; }
+    const Inventory& getInventory() const { return m_inventory; }
+
+    // Hotbar (delegated to inventory)
     void scrollHotbar(float delta);
-    int  getSelectedSlot() const { return m_selectedSlot; }
+    void setSelectedSlot(int slot) { m_inventory.setSelectedSlot(slot); }
+    int  getSelectedSlot() const { return m_inventory.getSelectedSlot(); }
     BlockType getSelectedBlock() const;
 
     // Accessors
@@ -44,13 +50,16 @@ public:
     float getYaw() const   { return m_yaw; }
     float getPitch() const { return m_pitch; }
     bool  isOnGround() const { return m_onGround; }
+    bool  isSprinting() const { return m_sprinting; }
     float getHealth() const  { return m_health; }
     float getMaxHealth() const { return 20.0f; }
+    float getHunger() const  { return m_hunger; }
+    float getMaxHunger() const { return 20.0f; }
     glm::vec3 getFront() const;
 
     // External damage / respawn
     void takeDamage(float amount) { m_health = std::max(0.0f, m_health - amount); }
-    void resetHealth()            { m_health = 20.0f; }
+    void resetHealth()            { m_health = 20.0f; m_hunger = 20.0f; }
     void setPosition(const glm::vec3& p) { m_position = p; m_velocity = glm::vec3(0.0f); }
 
 private:
@@ -59,6 +68,7 @@ private:
     void applyPhysics(float dt, BlockAccessor getBlock);
     bool collidesAt(const glm::vec3& pos, BlockAccessor getBlock) const;
     void applyFallDamage(float fallDist);
+    void updateHunger(float dt, const InputState& in);
 
     glm::vec3 m_position;
     glm::vec3 m_velocity{0.0f};
@@ -68,8 +78,11 @@ private:
     float m_fallStart = 0.0f;
     bool  m_wasFalling = false;
     float m_health = 20.0f;
-    int   m_selectedSlot = 0;
+    float m_hunger = 20.0f;
     bool  m_creative = false;
+    bool  m_sprinting = false;
+
+    Inventory m_inventory;
 
     // Breaking state
     bool m_wasBreaking = false;
@@ -82,10 +95,16 @@ private:
     static constexpr float SPRINT_SPEED= 5.612f;
     static constexpr float SNEAK_SPEED = 1.295f;
     static constexpr float FLY_SPEED   = 10.89f;
-    static constexpr float GRAVITY     = 32.0f;   // blocks/s²
+    static constexpr float GRAVITY     = 32.0f;   // blocks/s^2
     static constexpr float JUMP_VEL    = 8.2f;    // blocks/s
     static constexpr float TERMINAL_VEL= 78.4f;
     static constexpr float REACH       = 5.0f;
+
+    // Hunger constants
+    static constexpr float HUNGER_SPRINT_DRAIN = 0.1f;
+    static constexpr float HUNGER_REGEN_THRESHOLD = 18.0f;
+    static constexpr float HEALTH_REGEN_RATE = 0.5f;
+    static constexpr float STARVATION_RATE = 0.5f;
 };
 
 } // namespace voxelforge

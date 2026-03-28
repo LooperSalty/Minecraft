@@ -6,35 +6,23 @@
 
 namespace voxelforge {
 
-// ── Hotbar layout ──────────────────────────────────────────────────
-
-static constexpr BlockType HOTBAR[] = {
-    BlockType::Stone, BlockType::Dirt, BlockType::GrassBlock,
-    BlockType::Cobblestone, BlockType::OakLog, BlockType::OakPlanks,
-    BlockType::Sand, BlockType::OakLeaves, BlockType::Bedrock
-};
-
-static constexpr int HOTBAR_SIZE = 9;
-
-// ── Construction ───────────────────────────────────────────────────
+// -- Construction -----------------------------------------------------------
 
 PlayerController::PlayerController(const glm::vec3& spawnPos)
     : m_position(spawnPos)
 {}
 
-// ── Hotbar ─────────────────────────────────────────────────────────
+// -- Hotbar (delegated to inventory) ----------------------------------------
 
 BlockType PlayerController::getSelectedBlock() const {
-    return HOTBAR[m_selectedSlot];
+    return m_inventory.getSelectedBlockType();
 }
 
 void PlayerController::scrollHotbar(float delta) {
-    if (delta == 0.0f) return;
-    int d = (delta > 0.0f) ? 1 : -1;
-    m_selectedSlot = ((m_selectedSlot + d) % HOTBAR_SIZE + HOTBAR_SIZE) % HOTBAR_SIZE;
+    m_inventory.scrollSelected(delta);
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
+// -- Helpers ----------------------------------------------------------------
 
 glm::vec3 PlayerController::getEyePosition() const {
     return m_position + glm::vec3(0.0f, EYE_HEIGHT, 0.0f);
@@ -49,7 +37,7 @@ glm::vec3 PlayerController::getFront() const {
         std::sin(yawRad) * std::cos(pitchRad)));
 }
 
-// ── Mouse look ─────────────────────────────────────────────────────
+// -- Mouse look -------------------------------------------------------------
 
 void PlayerController::handleMouseLook(const glm::vec2& delta) {
     constexpr float SENSITIVITY = 0.1f;
@@ -58,16 +46,18 @@ void PlayerController::handleMouseLook(const glm::vec2& delta) {
     m_pitch  = std::clamp(m_pitch, -89.9f, 89.9f);
 }
 
-// ── Movement ───────────────────────────────────────────────────────
+// -- Movement ---------------------------------------------------------------
 
 void PlayerController::handleMovement(float dt, const InputState& in) {
     float yawRad = glm::radians(m_yaw);
     glm::vec3 flatFront = glm::normalize(glm::vec3(std::cos(yawRad), 0.0f, std::sin(yawRad)));
     glm::vec3 flatRight = glm::normalize(glm::cross(flatFront, glm::vec3(0.0f, 1.0f, 0.0f)));
 
+    m_sprinting = in.sprint && m_hunger > 6.0f;
+
     float speed = WALK_SPEED;
-    if (in.sprint) speed = SPRINT_SPEED;
-    if (in.sneak)  speed = SNEAK_SPEED;
+    if (m_sprinting) speed = SPRINT_SPEED;
+    if (in.sneak)    speed = SNEAK_SPEED;
 
     glm::vec3 dir(0.0f);
     if (in.forward)  dir += flatFront;
@@ -96,7 +86,7 @@ void PlayerController::handleMovement(float dt, const InputState& in) {
     }
 }
 
-// ── Collision ──────────────────────────────────────────────────────
+// -- Collision --------------------------------------------------------------
 
 bool PlayerController::collidesAt(const glm::vec3& pos, BlockAccessor getBlock) const {
     constexpr float HALF_W = WIDTH / 2.0f;
@@ -120,7 +110,7 @@ bool PlayerController::collidesAt(const glm::vec3& pos, BlockAccessor getBlock) 
     return false;
 }
 
-// ── Fall damage ────────────────────────────────────────────────────
+// -- Fall damage ------------------------------------------------------------
 
 void PlayerController::applyFallDamage(float fallDist) {
     if (fallDist > 3.0f) {
@@ -129,10 +119,35 @@ void PlayerController::applyFallDamage(float fallDist) {
     }
 }
 
-// ── Physics (survival only) ────────────────────────────────────────
+// -- Hunger system ----------------------------------------------------------
+
+void PlayerController::updateHunger(float dt, const InputState& in) {
+    if (m_creative) return;
+
+    // Sprinting drains hunger
+    if (m_sprinting && (in.forward || in.backward || in.left || in.right)) {
+        m_hunger -= HUNGER_SPRINT_DRAIN * dt;
+        m_hunger = std::max(m_hunger, 0.0f);
+    }
+
+    // Health regeneration when well-fed
+    if (m_hunger >= HUNGER_REGEN_THRESHOLD && m_health < 20.0f) {
+        m_health += HEALTH_REGEN_RATE * dt;
+        m_health = std::min(m_health, 20.0f);
+        m_hunger -= 0.05f * dt;
+        m_hunger = std::max(m_hunger, 0.0f);
+    }
+
+    // Starvation damage when hunger is 0
+    if (m_hunger <= 0.0f) {
+        m_health -= STARVATION_RATE * dt;
+        m_health = std::max(m_health, 0.0f);
+    }
+}
+
+// -- Physics (survival only) ------------------------------------------------
 
 void PlayerController::applyPhysics(float dt, BlockAccessor getBlock) {
-    // Gravity
     m_velocity.y -= GRAVITY * dt;
     m_velocity.y  = std::max(m_velocity.y, -TERMINAL_VEL);
 
@@ -143,7 +158,6 @@ void PlayerController::applyPhysics(float dt, BlockAccessor getBlock) {
     if (collidesAt(newPos, getBlock)) {
         if (m_velocity.y < 0.0f) {
             m_onGround = true;
-            // Landing: apply fall damage
             if (m_wasFalling) {
                 float fallDist = m_fallStart - m_position.y;
                 applyFallDamage(fallDist);
@@ -180,7 +194,7 @@ void PlayerController::applyPhysics(float dt, BlockAccessor getBlock) {
     m_position.z = newPos.z;
 }
 
-// ── Raycasting (DDA) ───────────────────────────────────────────────
+// -- Raycasting (DDA) -------------------------------------------------------
 
 PlayerController::BlockHit PlayerController::raycast(BlockAccessor getBlock) const {
     glm::vec3 origin = getEyePosition();
@@ -263,12 +277,17 @@ PlayerController::BlockHit PlayerController::raycast(BlockAccessor getBlock) con
     return {};
 }
 
-// ── Block interaction ──────────────────────────────────────────────
+// -- Block interaction ------------------------------------------------------
 
 void PlayerController::breakBlock(BlockSetter setBlock, BlockAccessor getBlock) {
     BlockHit hit = raycast(getBlock);
     if (hit.hit) {
+        BlockType brokenType = getBlock(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z);
         setBlock(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z, BlockType::Air);
+        // Add broken block to inventory (except bedrock)
+        if (brokenType != BlockType::Air && brokenType != BlockType::Bedrock) {
+            m_inventory.addItem(brokenType, 1);
+        }
     }
 }
 
@@ -276,20 +295,28 @@ void PlayerController::placeBlock(BlockSetter setBlock, BlockAccessor getBlock) 
     BlockHit hit = raycast(getBlock);
     if (!hit.hit) return;
 
+    BlockType toPlace = getSelectedBlock();
+    if (toPlace == BlockType::Air) return;
+
+    // Check we have items in inventory
+    int slot = m_inventory.getSelectedSlot();
+    if (m_inventory.getSlot(slot).count <= 0) return;
+
     // Don't place if block would overlap the player
     if (collidesAt(m_position, [&](int x, int y, int z) -> BlockType {
         if (x == hit.placePos.x && y == hit.placePos.y && z == hit.placePos.z) {
-            return getSelectedBlock();
+            return toPlace;
         }
         return getBlock(x, y, z);
     })) {
         return;
     }
 
-    setBlock(hit.placePos.x, hit.placePos.y, hit.placePos.z, getSelectedBlock());
+    setBlock(hit.placePos.x, hit.placePos.y, hit.placePos.z, toPlace);
+    m_inventory.removeItem(slot, 1);
 }
 
-// ── Per-frame update ───────────────────────────────────────────────
+// -- Per-frame update -------------------------------------------------------
 
 void PlayerController::update(float dt, const InputState& input, BlockAccessor getBlock) {
     handleMouseLook(input.mouseDelta);
@@ -301,7 +328,6 @@ void PlayerController::update(float dt, const InputState& input, BlockAccessor g
         m_onGround = false;
         m_wasFalling = false;
     } else {
-        // Jump
         if (input.jump && m_onGround) {
             m_velocity.y = JUMP_VEL;
             m_onGround   = false;
@@ -309,12 +335,11 @@ void PlayerController::update(float dt, const InputState& input, BlockAccessor g
             m_fallStart  = m_position.y;
         }
         applyPhysics(dt, getBlock);
+        updateHunger(dt, input);
     }
 
     scrollHotbar(input.scrollDelta);
 
-    // Rising-edge tracking for block interaction
-    // Actual break/place is driven by the caller via breakBlock()/placeBlock()
     m_wasBreaking = input.breakBlock;
     m_wasPlacing  = input.placeBlock;
 }

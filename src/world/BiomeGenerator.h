@@ -6,6 +6,7 @@ namespace voxelforge {
 enum class Biome : uint8_t {
     Plains = 0, Forest, BirchForest, Desert,
     ExtremeHills, Taiga, Swamp, Ocean, Beach,
+    MushroomIsland,
     COUNT
 };
 

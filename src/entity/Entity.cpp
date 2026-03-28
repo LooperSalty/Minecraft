@@ -1,6 +1,7 @@
 #include "Entity.h"
 #include <cmath>
 #include <cstdint>
+#include <algorithm>
 
 namespace voxelforge {
 
@@ -22,28 +23,34 @@ const MobInfo& getMobInfo(MobType type) {
     return MOB_INFO[static_cast<uint8_t>(type)];
 }
 
-// ---- Simple hash-based pseudo-random ----
-
-static uint32_t hashPosition(const glm::vec3& pos) {
-    auto ix = static_cast<uint32_t>(static_cast<int>(pos.x * 73856093.0f));
-    auto iy = static_cast<uint32_t>(static_cast<int>(pos.y * 19349663.0f));
-    auto iz = static_cast<uint32_t>(static_cast<int>(pos.z * 83492791.0f));
-    uint32_t h = ix ^ iy ^ iz;
-    h ^= h << 13;
-    h ^= h >> 17;
-    h ^= h << 5;
-    return h;
-}
-
 // ---- Entity ----
 
 Entity::Entity(MobType type, const glm::vec3& pos)
     : m_type(type)
     , m_position(pos)
-    , m_health(getMobInfo(type).maxHealth) {
-    // Deterministic initial yaw from position hash
-    uint32_t h = hashPosition(pos);
-    m_yaw = static_cast<float>(h % 3600) / 10.0f; // 0..360 degrees
+    , m_health(getMobInfo(type).maxHealth)
+{
+    // Deterministic RNG seed from position
+    auto ix = static_cast<uint32_t>(static_cast<int>(pos.x * 73856093.0f));
+    auto iy = static_cast<uint32_t>(static_cast<int>(pos.y * 19349663.0f));
+    auto iz = static_cast<uint32_t>(static_cast<int>(pos.z * 83492791.0f));
+    m_rngState = ix ^ iy ^ iz;
+    if (m_rngState == 0) m_rngState = 1;
+
+    m_yaw = static_cast<float>(nextRng() % 3600) / 10.0f;
+    m_headYaw = m_yaw;
+    m_aiTimer = randomFloat() * 3.0f; // stagger initial AI timers
+}
+
+uint32_t Entity::nextRng() {
+    m_rngState ^= m_rngState << 13;
+    m_rngState ^= m_rngState >> 17;
+    m_rngState ^= m_rngState << 5;
+    return m_rngState;
+}
+
+float Entity::randomFloat() {
+    return static_cast<float>(nextRng() % 10000) / 10000.0f;
 }
 
 bool Entity::isHostile() const {
@@ -54,45 +61,105 @@ const MobInfo& Entity::getInfo() const {
     return getMobInfo(m_type);
 }
 
-// ---- AI ----
+// ---- AABB for raycast ----
 
-void Entity::aiWander(float dt) {
-    m_aiTimer -= dt;
-    if (m_aiTimer <= 0.0f) {
-        // Pick a new wander interval (3-5 seconds)
-        uint32_t h = hashPosition(m_position);
-        float interval = 3.0f + static_cast<float>(h % 200) / 100.0f;
-        m_aiTimer = interval;
+glm::vec3 Entity::getAABBMin() const {
+    const auto& info = getInfo();
+    float halfW = info.width * 0.5f;
+    return glm::vec3(m_position.x - halfW, m_position.y, m_position.z - halfW);
+}
 
-        // Randomly stop sometimes (~30% chance)
-        if ((h >> 8) % 10 < 3) {
-            m_wanderDir = glm::vec3(0.0f);
-            return;
-        }
+glm::vec3 Entity::getAABBMax() const {
+    const auto& info = getInfo();
+    float halfW = info.width * 0.5f;
+    return glm::vec3(m_position.x + halfW, m_position.y + info.height, m_position.z + halfW);
+}
 
-        // Pick a random normalized XZ direction
-        float angle = static_cast<float>(h % 6283) / 1000.0f; // 0..~2*PI
-        m_wanderDir = glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
+// ---- Environment checks ----
+
+bool Entity::hasGroundAhead(const glm::vec3& dir, BlockAccessor getBlock) const {
+    // Check if there's solid ground 1 block ahead and 1 block down
+    glm::vec3 ahead = m_position + dir * 1.2f;
+    int ax = static_cast<int>(std::floor(ahead.x));
+    int ay = static_cast<int>(std::floor(m_position.y)) - 1;
+    int az = static_cast<int>(std::floor(ahead.z));
+    return isBlockSolid(getBlock(ax, ay, az));
+}
+
+bool Entity::hasWallAhead(const glm::vec3& dir, BlockAccessor getBlock) const {
+    glm::vec3 ahead = m_position + dir * 0.6f;
+    int ax = static_cast<int>(std::floor(ahead.x));
+    int ay = static_cast<int>(std::floor(m_position.y));
+    int az = static_cast<int>(std::floor(ahead.z));
+    // Check both feet level and head level
+    return isBlockSolid(getBlock(ax, ay, az)) || isBlockSolid(getBlock(ax, ay + 1, az));
+}
+
+// ---- AI States ----
+
+void Entity::aiIdle(float dt) {
+    m_velocity.x = 0.0f;
+    m_velocity.z = 0.0f;
+    m_stateTimer -= dt;
+
+    // Random head look
+    m_headLookTimer -= dt;
+    if (m_headLookTimer <= 0.0f) {
+        m_headYaw = m_yaw + (randomFloat() - 0.5f) * 90.0f;
+        m_headLookTimer = 1.0f + randomFloat() * 3.0f;
     }
 
-    const auto& info = getMobInfo(m_type);
-    m_velocity.x = m_wanderDir.x * info.speed;
-    m_velocity.z = m_wanderDir.z * info.speed;
+    if (m_stateTimer <= 0.0f) {
+        m_aiState = AIState::Wander;
+        m_stateTimer = 2.0f + randomFloat() * 3.0f;
 
-    // Face movement direction
-    if (m_wanderDir.x != 0.0f || m_wanderDir.z != 0.0f) {
-        m_yaw = std::atan2(m_velocity.x, m_velocity.z) * (180.0f / 3.14159265f);
+        // Pick a random walk direction
+        float angle = randomFloat() * 6.2831853f;
+        m_wanderDir = glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
     }
 }
 
-void Entity::aiChase(float dt, const glm::vec3& target) {
+void Entity::aiWander(float dt, BlockAccessor getBlock) {
+    m_stateTimer -= dt;
+
+    const auto& info = getInfo();
+    float speed = info.speed;
+
+    // Check for obstacles
+    if (m_wanderDir.x != 0.0f || m_wanderDir.z != 0.0f) {
+        if (hasWallAhead(m_wanderDir, getBlock) || !hasGroundAhead(m_wanderDir, getBlock)) {
+            // Turn around or pick new direction
+            float angle = randomFloat() * 6.2831853f;
+            m_wanderDir = glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
+        }
+    }
+
+    m_velocity.x = m_wanderDir.x * speed;
+    m_velocity.z = m_wanderDir.z * speed;
+
+    // Face movement direction
+    if (m_wanderDir.x != 0.0f || m_wanderDir.z != 0.0f) {
+        m_yaw = std::atan2(m_wanderDir.x, m_wanderDir.z) * (180.0f / 3.14159265f);
+        m_headYaw = m_yaw;
+    }
+
+    if (m_stateTimer <= 0.0f) {
+        m_aiState = AIState::Idle;
+        m_stateTimer = 2.0f + randomFloat() * 4.0f;
+    }
+}
+
+void Entity::aiChase(float dt, const glm::vec3& target, BlockAccessor getBlock) {
     glm::vec3 dir = target - m_position;
-    dir.y = 0.0f; // XZ only
+    dir.y = 0.0f;
     float dist = std::sqrt(dir.x * dir.x + dir.z * dir.z);
 
     // Give up if too far
     if (dist > 32.0f) {
-        aiWander(dt);
+        m_aiState = AIState::Wander;
+        m_stateTimer = 3.0f;
+        float angle = randomFloat() * 6.2831853f;
+        m_wanderDir = glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
         return;
     }
 
@@ -101,13 +168,116 @@ void Entity::aiChase(float dt, const glm::vec3& target) {
         dir.z /= dist;
     }
 
-    const auto& info = getMobInfo(m_type);
-    float chaseSpeed = info.speed * 1.2f;
+    const auto& info = getInfo();
+    float chaseSpeed = info.speed * 1.3f;
+
+    // Skeleton behavior: stay 8-12 blocks away
+    if (m_type == MobType::Skeleton) {
+        if (dist < 8.0f) {
+            // Back away
+            dir = -dir;
+            chaseSpeed = info.speed * 0.8f;
+        } else if (dist < 12.0f) {
+            // Stay put, just face player
+            m_velocity.x = 0.0f;
+            m_velocity.z = 0.0f;
+            m_yaw = std::atan2(dir.x, dir.z) * (180.0f / 3.14159265f);
+            m_headYaw = m_yaw;
+            return;
+        }
+    }
+
+    // Check for cliff ahead - if chasing, still check walls
+    glm::vec3 moveDir(dir.x, 0.0f, dir.z);
+    if (hasWallAhead(moveDir, getBlock)) {
+        // Try to jump over
+        if (m_onGround) {
+            m_velocity.y = 8.0f;
+        }
+    }
+
     m_velocity.x = dir.x * chaseSpeed;
     m_velocity.z = dir.z * chaseSpeed;
 
-    // Face target
     m_yaw = std::atan2(dir.x, dir.z) * (180.0f / 3.14159265f);
+    m_headYaw = m_yaw;
+
+    // Switch to attack if close enough
+    if (dist < 2.0f && m_type != MobType::Creeper) {
+        m_aiState = AIState::Attack;
+    }
+
+    // Creeper: switch to fuse if close
+    if (m_type == MobType::Creeper && dist < 3.0f) {
+        m_aiState = AIState::CreeperFuse;
+        m_creeperFuse = 0.0f;
+    }
+}
+
+void Entity::aiFlee(float dt, const glm::vec3& threat, BlockAccessor getBlock) {
+    m_stateTimer -= dt;
+
+    glm::vec3 dir = m_position - threat;
+    dir.y = 0.0f;
+    float dist = std::sqrt(dir.x * dir.x + dir.z * dir.z);
+    if (dist > 0.01f) {
+        dir.x /= dist;
+        dir.z /= dist;
+    }
+
+    const auto& info = getInfo();
+    float fleeSpeed = info.speed * 1.5f;
+
+    // Avoid cliffs and walls
+    glm::vec3 moveDir(dir.x, 0.0f, dir.z);
+    if (hasWallAhead(moveDir, getBlock) || !hasGroundAhead(moveDir, getBlock)) {
+        // Deflect 90 degrees
+        float temp = dir.x;
+        dir.x = -dir.z;
+        dir.z = temp;
+    }
+
+    m_velocity.x = dir.x * fleeSpeed;
+    m_velocity.z = dir.z * fleeSpeed;
+
+    m_yaw = std::atan2(dir.x, dir.z) * (180.0f / 3.14159265f);
+    m_headYaw = m_yaw;
+
+    if (m_stateTimer <= 0.0f) {
+        m_aiState = AIState::Idle;
+        m_stateTimer = 2.0f + randomFloat() * 3.0f;
+    }
+}
+
+void Entity::aiCreeperFuse(float dt, const glm::vec3& playerPos) {
+    // Stop moving
+    m_velocity.x = 0.0f;
+    m_velocity.z = 0.0f;
+
+    // Face player
+    glm::vec3 dir = playerPos - m_position;
+    dir.y = 0.0f;
+    float dist = std::sqrt(dir.x * dir.x + dir.z * dir.z);
+    if (dist > 0.01f) {
+        m_yaw = std::atan2(dir.x / dist, dir.z / dist) * (180.0f / 3.14159265f);
+        m_headYaw = m_yaw;
+    }
+
+    m_creeperFuse += dt;
+
+    // If player moves away, cancel fuse
+    if (dist > 4.5f) {
+        m_creeperFuse = 0.0f;
+        m_aiState = AIState::Chase;
+        return;
+    }
+
+    // Explode after 1.5 seconds
+    if (m_creeperFuse >= 1.5f) {
+        // Deal damage is handled externally via checkPlayerDamage
+        // Kill self
+        m_health = 0.0f;
+    }
 }
 
 // ---- Physics ----
@@ -178,25 +348,133 @@ void Entity::applyPhysics(float dt, BlockAccessor getBlock) {
 
 // ---- Update ----
 
-void Entity::update(float dt, const glm::vec3& playerPos, BlockAccessor getBlock) {
+void Entity::update(float dt, const glm::vec3& playerPos, BlockAccessor getBlock,
+                    float dayProgress) {
     // Decrement attack timer
     m_attackTimer -= dt;
-    if (m_attackTimer < 0.0f) {
-        m_attackTimer = 0.0f;
+    if (m_attackTimer < 0.0f) m_attackTimer = 0.0f;
+
+    // Update damage flash
+    if (m_damageFlash > 0.0f) {
+        m_damageFlash -= dt * 4.0f; // Flash fades over 0.25s
+        if (m_damageFlash < 0.0f) m_damageFlash = 0.0f;
     }
 
-    // AI behavior
-    if (isHostile()) {
-        glm::vec3 diff = playerPos - m_position;
-        diff.y = 0.0f;
-        float dist = std::sqrt(diff.x * diff.x + diff.z * diff.z);
-        if (dist < 24.0f) {
-            aiChase(dt, playerPos);
-        } else {
-            aiWander(dt);
+    // Update walk animation
+    float hSpeed = std::sqrt(m_velocity.x * m_velocity.x + m_velocity.z * m_velocity.z);
+    if (hSpeed > 0.1f) {
+        m_walkTime += dt * hSpeed * 2.5f;
+    } else {
+        // Smoothly return to rest
+        m_walkTime *= 0.9f;
+    }
+
+    // Distance to player
+    glm::vec3 diff = playerPos - m_position;
+    diff.y = 0.0f;
+    float distToPlayer = std::sqrt(diff.x * diff.x + diff.z * diff.z);
+
+    bool isNight = (dayProgress > 0.54f && dayProgress < 0.96f);
+
+    // AI behavior based on mob type
+    if (!isHostile()) {
+        // -- Passive mob AI --
+        switch (m_aiState) {
+            case AIState::Idle:
+                aiIdle(dt);
+                break;
+            case AIState::Wander:
+                aiWander(dt, getBlock);
+                break;
+            case AIState::Flee:
+                aiFlee(dt, m_fleeFrom, getBlock);
+                break;
+            default:
+                m_aiState = AIState::Idle;
+                m_stateTimer = 2.0f;
+                break;
         }
     } else {
-        aiWander(dt);
+        // -- Hostile mob AI --
+        // Spider is neutral during the day
+        bool isAggressive = true;
+        if (m_type == MobType::Spider && !isNight) {
+            isAggressive = false;
+        }
+
+        if (!isAggressive) {
+            // Spider during day: acts like passive mob
+            switch (m_aiState) {
+                case AIState::Idle:
+                    aiIdle(dt);
+                    break;
+                case AIState::Wander:
+                    aiWander(dt, getBlock);
+                    break;
+                case AIState::Flee:
+                    aiFlee(dt, m_fleeFrom, getBlock);
+                    break;
+                default:
+                    m_aiState = AIState::Idle;
+                    m_stateTimer = 2.0f;
+                    break;
+            }
+        } else {
+            // Aggressive hostile mob
+            if (m_aiState == AIState::CreeperFuse) {
+                aiCreeperFuse(dt, playerPos);
+            } else if (distToPlayer < 16.0f) {
+                if (m_aiState != AIState::Chase && m_aiState != AIState::Attack
+                    && m_aiState != AIState::CreeperFuse) {
+                    m_aiState = AIState::Chase;
+                }
+                if (m_aiState == AIState::Attack) {
+                    // Stay near player, face them
+                    m_velocity.x = 0.0f;
+                    m_velocity.z = 0.0f;
+                    if (distToPlayer > 0.01f) {
+                        glm::vec3 d = diff / distToPlayer;
+                        m_yaw = std::atan2(d.x, d.z) * (180.0f / 3.14159265f);
+                        m_headYaw = m_yaw;
+                    }
+                    // If target moves away, resume chase
+                    if (distToPlayer > 2.5f) {
+                        m_aiState = AIState::Chase;
+                    }
+                } else {
+                    aiChase(dt, playerPos, getBlock);
+                }
+            } else if (distToPlayer < 24.0f) {
+                // Within detection range but not chase range yet -
+                // wander toward player slowly
+                switch (m_aiState) {
+                    case AIState::Idle:
+                        aiIdle(dt);
+                        break;
+                    case AIState::Wander:
+                        aiWander(dt, getBlock);
+                        break;
+                    default:
+                        m_aiState = AIState::Idle;
+                        m_stateTimer = 1.0f + randomFloat() * 2.0f;
+                        break;
+                }
+            } else {
+                // Far from player, wander
+                switch (m_aiState) {
+                    case AIState::Idle:
+                        aiIdle(dt);
+                        break;
+                    case AIState::Wander:
+                        aiWander(dt, getBlock);
+                        break;
+                    default:
+                        m_aiState = AIState::Idle;
+                        m_stateTimer = 2.0f;
+                        break;
+                }
+            }
+        }
     }
 
     applyPhysics(dt, getBlock);
@@ -210,10 +488,23 @@ void Entity::update(float dt, const glm::vec3& playerPos, BlockAccessor getBlock
 
 // ---- Damage ----
 
-void Entity::damage(float amount) {
+void Entity::damage(float amount, const glm::vec3& knockbackDir) {
     m_health -= amount;
-    if (m_health < 0.0f) {
-        m_health = 0.0f;
+    if (m_health < 0.0f) m_health = 0.0f;
+
+    // Damage flash
+    m_damageFlash = 1.0f;
+
+    // Knockback
+    m_velocity.x += knockbackDir.x * 8.0f;
+    m_velocity.y += 4.0f; // Pop up
+    m_velocity.z += knockbackDir.z * 8.0f;
+
+    // Passive mobs flee when hit
+    if (!isHostile()) {
+        m_aiState = AIState::Flee;
+        m_stateTimer = 3.0f;
+        m_fleeFrom = m_position - knockbackDir; // Flee from the attacker's direction
     }
 }
 
@@ -224,7 +515,6 @@ bool Entity::overlapsPlayer(const glm::vec3& playerPos, float pw, float ph) cons
     float halfW = info.width * 0.5f;
     float halfPW = pw * 0.5f;
 
-    // AABB overlap test
     bool overlapX = (m_position.x - halfW) < (playerPos.x + halfPW) &&
                     (m_position.x + halfW) > (playerPos.x - halfPW);
     bool overlapZ = (m_position.z - halfW) < (playerPos.z + halfPW) &&
