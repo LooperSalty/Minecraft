@@ -14,6 +14,12 @@ public:
     glm::mat4 getProjectionMatrix(float aspectRatio) const;
     const glm::vec3& getPosition() const { return m_position; }
 
+    // Used by PlayerController to set camera from player state
+    void setPosition(const glm::vec3& p) { m_position = p; }
+    void setYawPitch(float yaw, float pitch) {
+        m_yaw = yaw; m_pitch = pitch; updateVectors();
+    }
+
 private:
     void updateVectors();
 

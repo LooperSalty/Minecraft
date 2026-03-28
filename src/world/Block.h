@@ -14,6 +14,8 @@ enum class BlockType : uint16_t {
     CoalOre, IronOre, GoldOre, DiamondOre,
     RedstoneOre, LapisOre, EmeraldOre,
     SnowBlock, Sandstone,
+    // Phase 2 – vegetation & terrain variety
+    TallGrass, Poppy, Dandelion, Cactus, Clay,
     COUNT
 };
 
@@ -37,5 +39,6 @@ struct BlockData {
 const BlockData& getBlockData(BlockType type);
 bool isBlockOpaque(BlockType type);
 bool isBlockSolid(BlockType type);
+bool isBlockCross(BlockType type);
 
 } // namespace voxelforge

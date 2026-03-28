@@ -20,6 +20,10 @@ public:
     Chunk* getChunk(int cx, int cz) const;
     int getLoadedCount() const { return static_cast<int>(m_chunks.size()); }
 
+    // World-coordinate block access
+    BlockType getBlock(int wx, int wy, int wz) const;
+    void setBlock(int wx, int wy, int wz, BlockType type);
+
 private:
     struct LoadedChunk {
         std::unique_ptr<Chunk> chunk;

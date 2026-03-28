@@ -36,6 +36,12 @@ static constexpr BlockData BLOCK_DATA[] = {
     {"emerald_ore",    true,  true,  0,  {25, 25, 25, 25, 25, 25}},
     {"snow_block",     true,  true,  0,  {26, 26, 26, 26, 26, 26}},
     {"sandstone",      true,  true,  0,  {27, 27, 27, 27, 27, 27}},
+    // Phase 2 – vegetation & terrain variety
+    {"tall_grass",     false, false, 0,  {28, 28, 28, 28, 28, 28}},
+    {"poppy",          false, false, 0,  {29, 29, 29, 29, 29, 29}},
+    {"dandelion",      false, false, 0,  {30, 30, 30, 30, 30, 30}},
+    {"cactus",         true,  true,  0,  {31, 31, 31, 31, 31, 31}},
+    {"clay",           true,  true,  0,  {32, 32, 32, 32, 32, 32}},
 };
 
 const BlockData& getBlockData(BlockType type) {
@@ -46,5 +52,10 @@ const BlockData& getBlockData(BlockType type) {
 
 bool isBlockOpaque(BlockType type) { return getBlockData(type).isOpaque; }
 bool isBlockSolid(BlockType type)  { return getBlockData(type).isSolid;  }
+bool isBlockCross(BlockType type) {
+    return type == BlockType::TallGrass ||
+           type == BlockType::Poppy ||
+           type == BlockType::Dandelion;
+}
 
 } // namespace voxelforge

@@ -59,6 +59,9 @@ void Shader::setFloat(const std::string& n, float v) const {
 void Shader::setVec3(const std::string& n, const glm::vec3& v) const {
     glUniform3fv(glGetUniformLocation(m_program, n.c_str()), 1, &v[0]);
 }
+void Shader::setVec4(const std::string& n, const glm::vec4& v) const {
+    glUniform4fv(glGetUniformLocation(m_program, n.c_str()), 1, &v[0]);
+}
 void Shader::setMat4(const std::string& n, const glm::mat4& v) const {
     glUniformMatrix4fv(glGetUniformLocation(m_program, n.c_str()), 1, GL_FALSE, &v[0][0]);
 }

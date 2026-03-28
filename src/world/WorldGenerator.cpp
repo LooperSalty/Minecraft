@@ -76,6 +76,16 @@ void WorldGenerator::generate(Chunk& chunk) const {
                     chunk.setBlock(x, y, z, BlockType::Water);
                 }
             }
+
+            // River bed: place gravel/clay at river bottoms
+            float riverDist = m_terrain.getRiverValue(worldX, worldZ);
+            if (riverDist < 0.04f && height < SEA_LEVEL) {
+                // River bottom gets gravel instead of dirt/sand
+                if (height >= 1) {
+                    chunk.setBlock(x, height, z,
+                        (riverDist < 0.02f) ? BlockType::Clay : BlockType::Gravel);
+                }
+            }
         }
     }
 
@@ -87,6 +97,9 @@ void WorldGenerator::generate(Chunk& chunk) const {
 
     // Pass 4: generate trees
     StructureGenerator::generateTrees(chunk, m_seed, m_biomes, m_terrain);
+
+    // Pass 5: generate vegetation (tall grass, flowers, cacti, snow)
+    StructureGenerator::generateVegetation(chunk, m_seed, m_biomes, m_terrain);
 }
 
 } // namespace voxelforge

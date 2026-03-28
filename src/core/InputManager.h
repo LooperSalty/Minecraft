@@ -17,6 +17,7 @@ public:
     static glm::vec2 getMouseDelta();
     static glm::vec2 getMousePosition();
     static float getScrollDelta();
+    static void  resetFirstMouse() { s_firstMouse = true; }
 
 private:
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);

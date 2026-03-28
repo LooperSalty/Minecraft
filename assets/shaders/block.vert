@@ -4,21 +4,24 @@ layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aTexCoord;
 layout (location = 2) in float aLight;
 layout (location = 3) in vec3 aNormal;
+layout (location = 4) in float aAO;
 
 out vec2 TexCoord;
 out float Light;
-out float FogFactor;
+out float AO;
+out vec3 FragNormal;
+out float FragDist;
+out vec3 FragPos;
 
 uniform mat4 uViewProjection;
 uniform vec3 uCameraPos;
-uniform float uFogStart;
-uniform float uFogEnd;
 
 void main() {
     gl_Position = uViewProjection * vec4(aPos, 1.0);
     TexCoord = aTexCoord;
     Light = aLight;
-
-    float dist = length(aPos - uCameraPos);
-    FogFactor = clamp((uFogEnd - dist) / (uFogEnd - uFogStart), 0.0, 1.0);
+    AO = aAO;
+    FragNormal = aNormal;
+    FragDist = length(aPos - uCameraPos);
+    FragPos = aPos;
 }

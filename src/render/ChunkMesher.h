@@ -10,6 +10,7 @@ struct Vertex {
     float u, v;
     float light;
     float nx, ny, nz;
+    float ao;
 };
 
 struct ChunkMesh {
@@ -34,7 +35,8 @@ private:
     static BlockType sampleBlock(const Chunk& chunk, const ChunkNeighbors& nb,
                                  int x, int y, int z);
     static void addFace(ChunkMesh& mesh, const glm::vec3& blockPos,
-                        BlockFace face, uint8_t texIdx, float brightness);
+                        BlockFace face, uint8_t texIdx, float brightness,
+                        const float aoValues[4]);
 };
 
 } // namespace voxelforge

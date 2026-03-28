@@ -246,6 +246,111 @@ void TextureAtlas::generate() {
     // 27 Sandstone (tan with noise)
     fillTile(px.data(), 11, 1, 210, 195, 150);
 
+    // 28 TallGrass (green blades on transparent background)
+    {
+        int bx = 12 * TILE_SIZE, by = 1 * TILE_SIZE;
+        for (int y = 0; y < TILE_SIZE; ++y) {
+            for (int x = 0; x < TILE_SIZE; ++x) {
+                int idx = ((by + y) * ATLAS_SIZE + (bx + x)) * 4;
+                // Vertical blade pattern: a few columns are green blades
+                bool blade = (x % 3 == 0) || (x % 5 == 1);
+                // Taper: blades are shorter near edges, taller in middle
+                int maxH = 4 + (8 - std::abs(x - 8));
+                bool inBlade = blade && (y >= (TILE_SIZE - maxH));
+                if (inBlade) {
+                    int n = (std::rand() % 30) - 15;
+                    px[idx+0]=uint8_t(std::clamp(60+n, 0, 255));
+                    px[idx+1]=uint8_t(std::clamp(130+n, 0, 255));
+                    px[idx+2]=uint8_t(std::clamp(40+n, 0, 255));
+                    px[idx+3]=255;
+                } else {
+                    px[idx+0]=0; px[idx+1]=0; px[idx+2]=0; px[idx+3]=0;
+                }
+            }
+        }
+    }
+
+    // 29 Poppy (red flower on green stem)
+    {
+        int bx = 13 * TILE_SIZE, by = 1 * TILE_SIZE;
+        for (int y = 0; y < TILE_SIZE; ++y) {
+            for (int x = 0; x < TILE_SIZE; ++x) {
+                int idx = ((by + y) * ATLAS_SIZE + (bx + x)) * 4;
+                int n = (std::rand() % 10) - 5;
+                // Stem: center column, bottom half
+                bool stem = (x >= 7 && x <= 8) && (y >= 8);
+                // Flower head: upper center
+                float dx = x - 7.5f, dy = y - 4.5f;
+                bool flower = (dx*dx + dy*dy) < 12.0f;
+                if (flower) {
+                    px[idx+0]=uint8_t(std::clamp(200+n, 0, 255));
+                    px[idx+1]=uint8_t(std::clamp(30+n, 0, 255));
+                    px[idx+2]=uint8_t(std::clamp(30+n, 0, 255));
+                    px[idx+3]=255;
+                } else if (stem) {
+                    px[idx+0]=uint8_t(std::clamp(40+n, 0, 255));
+                    px[idx+1]=uint8_t(std::clamp(100+n, 0, 255));
+                    px[idx+2]=uint8_t(std::clamp(30+n, 0, 255));
+                    px[idx+3]=255;
+                } else {
+                    px[idx+0]=0; px[idx+1]=0; px[idx+2]=0; px[idx+3]=0;
+                }
+            }
+        }
+    }
+
+    // 30 Dandelion (yellow flower on green stem)
+    {
+        int bx = 14 * TILE_SIZE, by = 1 * TILE_SIZE;
+        for (int y = 0; y < TILE_SIZE; ++y) {
+            for (int x = 0; x < TILE_SIZE; ++x) {
+                int idx = ((by + y) * ATLAS_SIZE + (bx + x)) * 4;
+                int n = (std::rand() % 10) - 5;
+                bool stem = (x >= 7 && x <= 8) && (y >= 8);
+                float dx = x - 7.5f, dy = y - 5.0f;
+                bool flower = (dx*dx + dy*dy) < 10.0f;
+                if (flower) {
+                    px[idx+0]=uint8_t(std::clamp(240+n, 0, 255));
+                    px[idx+1]=uint8_t(std::clamp(220+n, 0, 255));
+                    px[idx+2]=uint8_t(std::clamp(40+n, 0, 255));
+                    px[idx+3]=255;
+                } else if (stem) {
+                    px[idx+0]=uint8_t(std::clamp(40+n, 0, 255));
+                    px[idx+1]=uint8_t(std::clamp(100+n, 0, 255));
+                    px[idx+2]=uint8_t(std::clamp(30+n, 0, 255));
+                    px[idx+3]=255;
+                } else {
+                    px[idx+0]=0; px[idx+1]=0; px[idx+2]=0; px[idx+3]=0;
+                }
+            }
+        }
+    }
+
+    // 31 Cactus (dark green base with lighter green spots)
+    {
+        int bx = 15 * TILE_SIZE, by = 1 * TILE_SIZE;
+        for (int y = 0; y < TILE_SIZE; ++y) {
+            for (int x = 0; x < TILE_SIZE; ++x) {
+                int idx = ((by + y) * ATLAS_SIZE + (bx + x)) * 4;
+                int n = (std::rand() % 16) - 8;
+                // Dark green base
+                int r = 30, g = 100, b = 30;
+                // Lighter spots every few pixels
+                bool spot = ((x + y * 3) % 7 == 0) || ((x * 5 + y) % 11 == 0);
+                if (spot) { r += 30; g += 40; b += 20; }
+                // Vertical stripe pattern for ridges
+                if (x % 4 == 0) { r -= 10; g -= 15; b -= 10; }
+                px[idx+0]=uint8_t(std::clamp(r+n, 0, 255));
+                px[idx+1]=uint8_t(std::clamp(g+n, 0, 255));
+                px[idx+2]=uint8_t(std::clamp(b+n, 0, 255));
+                px[idx+3]=255;
+            }
+        }
+    }
+
+    // 32 Clay (light gray-brown)
+    fillTile(px.data(), 0, 2, 160, 155, 148);
+
     // Upload
     glGenTextures(1, &m_texture);
     glBindTexture(GL_TEXTURE_2D, m_texture);

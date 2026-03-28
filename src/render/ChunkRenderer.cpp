@@ -62,6 +62,11 @@ void ChunkRenderer::upload(const ChunkMesh& mesh) {
                           reinterpret_cast<void*>(offsetof(Vertex, nx)));
     glEnableVertexAttribArray(3);
 
+    // location 4 : ambient occlusion (float)
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          reinterpret_cast<void*>(offsetof(Vertex, ao)));
+    glEnableVertexAttribArray(4);
+
     glBindVertexArray(0);
     m_indexCount = static_cast<uint32_t>(mesh.indices.size());
 }

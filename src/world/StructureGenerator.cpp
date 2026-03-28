@@ -1,7 +1,9 @@
 #include "StructureGenerator.h"
 #include "Chunk.h"
 #include "Block.h"
+#include "../util/Noise.h"
 #include <cstdint>
+#include <cmath>
 
 namespace voxelforge {
 
@@ -154,6 +156,116 @@ void StructureGenerator::generateTrees(Chunk& chunk, int64_t seed,
         int trunkHeight = minHeight + static_cast<int>((h >> 16) % static_cast<uint32_t>(heightRange));
 
         placeTree(chunk, lx, surfaceY, lz, logType, leafType, trunkHeight, h);
+    }
+}
+
+void StructureGenerator::generateVegetation(Chunk& chunk, int64_t seed,
+                                             const BiomeGenerator& biomes,
+                                             const TerrainGenerator& terrain) {
+    int chunkX = chunk.getChunkX();
+    int chunkZ = chunk.getChunkZ();
+    int baseSeed = static_cast<int>(seed & 0x7FFFFFFF);
+
+    for (int x = 0; x < CHUNK_WIDTH; ++x) {
+        for (int z = 0; z < CHUNK_DEPTH; ++z) {
+            int worldX = chunkX * CHUNK_WIDTH + x;
+            int worldZ = chunkZ * CHUNK_DEPTH + z;
+
+            Biome biome = biomes.getBiome(worldX, worldZ);
+            int surfaceY = terrain.getHeight(worldX, worldZ, biome);
+
+            // Skip if below or at sea level, or too high
+            if (surfaceY <= SEA_LEVEL || surfaceY >= CHUNK_HEIGHT - 2) {
+                continue;
+            }
+
+            // Check that the surface block is suitable
+            BlockType surface = chunk.getBlock(x, surfaceY, z);
+            BlockType above = chunk.getBlock(x, surfaceY + 1, z);
+            if (above != BlockType::Air) {
+                continue;
+            }
+
+            // Use noise-based distribution for natural clusters
+            float fx = static_cast<float>(worldX);
+            float fz = static_cast<float>(worldZ);
+
+            // Vegetation density noise: clustered placement
+            float vegNoise = octavePerlin2D(fx, fz, 3, 0.5f, 1.0f / 32.0f, baseSeed + 10000);
+            // Flower noise: separate layer for flower clusters
+            float flowerNoise = octavePerlin2D(fx, fz, 3, 0.5f, 1.0f / 48.0f, baseSeed + 11000);
+
+            // Hash for per-block randomness
+            uint32_t h = hash(seed + 12000, worldX, worldZ, surfaceY);
+            float rng = static_cast<float>(h % 1000) / 1000.0f;
+
+            switch (biome) {
+                case Biome::Plains: {
+                    if (surface != BlockType::GrassBlock) break;
+                    // 30% tall grass where noise is favorable
+                    if (vegNoise > 0.0f && rng < 0.30f) {
+                        chunk.setBlock(x, surfaceY + 1, z, BlockType::TallGrass);
+                    }
+                    // 5% flowers in flower-noise clusters
+                    else if (flowerNoise > 0.3f && rng < 0.05f) {
+                        // Alternate between poppy and dandelion
+                        BlockType flower = ((h >> 10) & 1) ? BlockType::Poppy : BlockType::Dandelion;
+                        chunk.setBlock(x, surfaceY + 1, z, flower);
+                    }
+                    break;
+                }
+                case Biome::Forest:
+                case Biome::BirchForest: {
+                    if (surface != BlockType::GrassBlock) break;
+                    // 15% tall grass
+                    if (vegNoise > 0.1f && rng < 0.15f) {
+                        chunk.setBlock(x, surfaceY + 1, z, BlockType::TallGrass);
+                    }
+                    // 2% flowers
+                    else if (flowerNoise > 0.4f && rng < 0.02f) {
+                        BlockType flower = ((h >> 10) & 1) ? BlockType::Poppy : BlockType::Dandelion;
+                        chunk.setBlock(x, surfaceY + 1, z, flower);
+                    }
+                    break;
+                }
+                case Biome::Desert: {
+                    if (surface != BlockType::Sand) break;
+                    // 3% cactus with spacing (use noise to avoid adjacent cacti)
+                    if (vegNoise > 0.4f && rng < 0.03f) {
+                        // Place 1-3 block tall cactus
+                        int cactusH = 1 + static_cast<int>((h >> 4) % 3);
+                        for (int cy = 1; cy <= cactusH; ++cy) {
+                            if (surfaceY + cy < CHUNK_HEIGHT) {
+                                chunk.setBlock(x, surfaceY + cy, z, BlockType::Cactus);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case Biome::Taiga:
+                case Biome::ExtremeHills: {
+                    // Snow biome: place snow on top if grass, no vegetation
+                    if (surface == BlockType::GrassBlock || surface == BlockType::Dirt) {
+                        chunk.setBlock(x, surfaceY, z, BlockType::SnowBlock);
+                    }
+                    break;
+                }
+                case Biome::Swamp: {
+                    if (surface != BlockType::GrassBlock) break;
+                    // Swamp has some grass and clay patches near water
+                    if (vegNoise > -0.1f && rng < 0.20f) {
+                        chunk.setBlock(x, surfaceY + 1, z, BlockType::TallGrass);
+                    }
+                    // Clay patches near sea level
+                    if (surfaceY <= SEA_LEVEL + 2 && flowerNoise < -0.3f) {
+                        chunk.setBlock(x, surfaceY, z, BlockType::Clay);
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
     }
 }
 

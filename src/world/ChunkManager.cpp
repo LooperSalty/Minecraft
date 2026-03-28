@@ -157,4 +157,41 @@ void ChunkManager::renderAll(const Shader& shader, const Frustum& frustum) const
     }
 }
 
+// ---------- world-coordinate block access ----------
+
+BlockType ChunkManager::getBlock(int wx, int wy, int wz) const {
+    if (wy < 0 || wy >= CHUNK_HEIGHT) return BlockType::Air;
+
+    int cx = (wx >= 0) ? (wx / CHUNK_WIDTH) : ((wx - CHUNK_WIDTH + 1) / CHUNK_WIDTH);
+    int cz = (wz >= 0) ? (wz / CHUNK_DEPTH) : ((wz - CHUNK_DEPTH + 1) / CHUNK_DEPTH);
+
+    Chunk* c = getChunk(cx, cz);
+    if (!c) return BlockType::Air;
+
+    int lx = wx - cx * CHUNK_WIDTH;
+    int lz = wz - cz * CHUNK_DEPTH;
+    return c->getBlock(lx, wy, lz);
+}
+
+void ChunkManager::setBlock(int wx, int wy, int wz, BlockType type) {
+    if (wy < 0 || wy >= CHUNK_HEIGHT) return;
+
+    int cx = (wx >= 0) ? (wx / CHUNK_WIDTH) : ((wx - CHUNK_WIDTH + 1) / CHUNK_WIDTH);
+    int cz = (wz >= 0) ? (wz / CHUNK_DEPTH) : ((wz - CHUNK_DEPTH + 1) / CHUNK_DEPTH);
+
+    auto it = m_chunks.find(key(cx, cz));
+    if (it == m_chunks.end()) return;
+
+    int lx = wx - cx * CHUNK_WIDTH;
+    int lz = wz - cz * CHUNK_DEPTH;
+    it->second.chunk->setBlock(lx, wy, lz, type);
+    it->second.meshDirty = true;
+
+    // Mark neighbor chunks dirty if block is on edge
+    if (lx == 0)             { auto n = m_chunks.find(key(cx - 1, cz)); if (n != m_chunks.end()) n->second.meshDirty = true; }
+    if (lx == CHUNK_WIDTH-1) { auto n = m_chunks.find(key(cx + 1, cz)); if (n != m_chunks.end()) n->second.meshDirty = true; }
+    if (lz == 0)             { auto n = m_chunks.find(key(cx, cz - 1)); if (n != m_chunks.end()) n->second.meshDirty = true; }
+    if (lz == CHUNK_DEPTH-1) { auto n = m_chunks.find(key(cx, cz + 1)); if (n != m_chunks.end()) n->second.meshDirty = true; }
+}
+
 } // namespace voxelforge
