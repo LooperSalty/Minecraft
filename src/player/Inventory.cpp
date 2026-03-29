@@ -4,16 +4,7 @@
 namespace voxelforge {
 
 Inventory::Inventory() {
-    // Starting items in hotbar
-    m_slots[0] = { BlockType::Stone,        64 };
-    m_slots[1] = { BlockType::Dirt,         64 };
-    m_slots[2] = { BlockType::OakPlanks,    64 };
-    m_slots[3] = { BlockType::Cobblestone,  64 };
-    m_slots[4] = { BlockType::Sand,         64 };
-    m_slots[5] = { BlockType::OakLog,       64 };
-    m_slots[6] = { BlockType::Sandstone,     64 };
-    m_slots[7] = { BlockType::OakLeaves,    64 };
-    m_slots[8] = { BlockType::Bedrock,      64 };
+    // Survival mode: start with empty inventory
 }
 
 const ItemStack& Inventory::getSlot(int index) const {

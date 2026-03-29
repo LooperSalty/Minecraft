@@ -311,7 +311,7 @@ void StructureGenerator::generateTrees(Chunk& chunk, int64_t seed,
             Biome localBiome = biomes.getBiome(worldX, worldZ);
             if (localBiome != Biome::MushroomIsland) continue;
 
-            int surfaceY = terrain.getHeight(worldX, worldZ, localBiome);
+            int surfaceY = terrain.getBlendedHeight(worldX, worldZ, biomes);
             if (surfaceY <= SEA_LEVEL || surfaceY >= CHUNK_HEIGHT - 12) continue;
 
             int mushroomHeight = 5 + static_cast<int>((h >> 16) % 4);
@@ -337,7 +337,7 @@ void StructureGenerator::generateTrees(Chunk& chunk, int64_t seed,
         TreeType treeType = getTreeType(localBiome, h);
         if (treeType == TreeType::None) continue;
 
-        int surfaceY = terrain.getHeight(worldX, worldZ, localBiome);
+        int surfaceY = terrain.getBlendedHeight(worldX, worldZ, biomes);
         if (surfaceY <= 0 || surfaceY >= CHUNK_HEIGHT - 15) continue;
 
         // Verify surface is suitable
@@ -414,7 +414,7 @@ void StructureGenerator::generateVegetation(Chunk& chunk, int64_t seed,
             int worldZ = chunkZ * CHUNK_DEPTH + z;
 
             Biome biome = biomes.getBiome(worldX, worldZ);
-            int surfaceY = terrain.getHeight(worldX, worldZ, biome);
+            int surfaceY = terrain.getBlendedHeight(worldX, worldZ, biomes);
 
             if (surfaceY >= CHUNK_HEIGHT - 2) continue;
 
@@ -826,7 +826,7 @@ void StructureGenerator::generateStructures(Chunk& chunk, int64_t seed,
             int lz = 2 + static_cast<int>((houseHash >> 8) % (CHUNK_DEPTH - 8));
             int worldX = chunkX * CHUNK_WIDTH + lx;
             int worldZ = chunkZ * CHUNK_DEPTH + lz;
-            int surfaceY = terrain.getHeight(worldX, worldZ, centerBiome);
+            int surfaceY = terrain.getBlendedHeight(worldX, worldZ, biomes);
 
             if (surfaceY <= SEA_LEVEL || surfaceY >= CHUNK_HEIGHT - 10) continue;
 
@@ -854,7 +854,7 @@ void StructureGenerator::generateStructures(Chunk& chunk, int64_t seed,
         int lz = 3 + static_cast<int>((structHash >> 12) % (CHUNK_DEPTH - 12));
         int worldX = chunkX * CHUNK_WIDTH + lx;
         int worldZ = chunkZ * CHUNK_DEPTH + lz;
-        int surfaceY = terrain.getHeight(worldX, worldZ, centerBiome);
+        int surfaceY = terrain.getBlendedHeight(worldX, worldZ, biomes);
 
         if (surfaceY > SEA_LEVEL && surfaceY < CHUNK_HEIGHT - 10) {
             placeDesertTemple(chunk, lx, surfaceY, lz);

@@ -40,10 +40,18 @@ static constexpr float   FOG_DENSITY = 1.0f / (RENDER_DIST * CHUNK_WIDTH);
 static constexpr float TICKS_PER_SECOND = 20.0f;
 static constexpr float DAY_LENGTH       = 24000.0f;
 
-// Sky color presets
+// Sky color presets (general)
 static constexpr glm::vec3 SKY_DAY     = {0.53f, 0.81f, 0.92f};
 static constexpr glm::vec3 SKY_SUNSET  = {0.90f, 0.50f, 0.30f};
 static constexpr glm::vec3 SKY_NIGHT   = {0.01f, 0.01f, 0.05f};
+
+// Sky gradient colours (zenith / horizon)
+static constexpr glm::vec3 SKY_DAY_ZENITH      = {0.25f, 0.47f, 0.85f};
+static constexpr glm::vec3 SKY_DAY_HORIZON      = {0.65f, 0.85f, 0.98f};
+static constexpr glm::vec3 SKY_SUNSET_ZENITH    = {0.30f, 0.28f, 0.55f};
+static constexpr glm::vec3 SKY_SUNSET_HORIZON   = {0.95f, 0.45f, 0.15f};
+static constexpr glm::vec3 SKY_NIGHT_ZENITH     = {0.005f, 0.005f, 0.02f};
+static constexpr glm::vec3 SKY_NIGHT_HORIZON    = {0.02f, 0.02f, 0.06f};
 
 // Spawn position
 static constexpr glm::vec3 SPAWN_POS = {0.0f, 100.0f, 0.0f};
@@ -62,6 +70,8 @@ static glm::vec3 lerpColor(const glm::vec3& a, const glm::vec3& b, float t) {
 struct SkyState {
     glm::vec3 skyColor;
     glm::vec3 fogColor;
+    glm::vec3 zenithColor;
+    glm::vec3 horizonColor;
     float sunlight;
     glm::vec3 sunDirection;
 };
@@ -69,32 +79,39 @@ struct SkyState {
 static SkyState computeSkyState(float worldTime) {
     float t = worldTime / DAY_LENGTH; // 0..1
 
-    glm::vec3 sky;
+    glm::vec3 sky, zenith, horizon;
     float sunlight;
 
     if (t < 0.50f) {
         sky      = SKY_DAY;
+        zenith   = SKY_DAY_ZENITH;
+        horizon  = SKY_DAY_HORIZON;
         sunlight = 1.0f;
     } else if (t < 0.54f) {
-        float f = smoothstep(0.50f, 0.54f, t);
+        float f  = smoothstep(0.50f, 0.54f, t);
         sky      = lerpColor(SKY_DAY, SKY_SUNSET, f);
+        zenith   = lerpColor(SKY_DAY_ZENITH, SKY_SUNSET_ZENITH, f);
+        horizon  = lerpColor(SKY_DAY_HORIZON, SKY_SUNSET_HORIZON, f);
         sunlight = 1.0f - 0.8f * f;
     } else if (t < 0.96f) {
-        float entryFade = smoothstep(0.54f, 0.58f, t);
-        sky      = lerpColor(SKY_SUNSET, SKY_NIGHT, entryFade);
+        float f  = smoothstep(0.54f, 0.58f, t);
+        sky      = lerpColor(SKY_SUNSET, SKY_NIGHT, f);
+        zenith   = lerpColor(SKY_SUNSET_ZENITH, SKY_NIGHT_ZENITH, f);
+        horizon  = lerpColor(SKY_SUNSET_HORIZON, SKY_NIGHT_HORIZON, f);
         sunlight = 0.2f;
     } else {
-        float f = smoothstep(0.96f, 1.00f, t);
+        float f  = smoothstep(0.96f, 1.00f, t);
         sky      = lerpColor(SKY_NIGHT, SKY_DAY, f);
+        zenith   = lerpColor(SKY_NIGHT_ZENITH, SKY_DAY_ZENITH, f);
+        horizon  = lerpColor(SKY_NIGHT_HORIZON, SKY_DAY_HORIZON, f);
         sunlight = 0.2f + 0.8f * f;
     }
 
-    // Sun direction rotates over the day cycle
     float sunAngle = t * 2.0f * 3.14159265f;
     glm::vec3 sunDir = glm::normalize(glm::vec3(
         -std::cos(sunAngle), -std::sin(sunAngle), 0.3f));
 
-    return { sky, sky, sunlight, sunDir };
+    return { sky, sky, zenith, horizon, sunlight, sunDir };
 }
 
 // --- World resources managed via unique_ptr so we can create them on "Play" ---
@@ -109,6 +126,11 @@ struct WorldState {
     bool           prevBreak    = false;
     bool           prevPlace    = false;
     float          attackCooldown = 0.0f;
+
+    // Progressive block breaking
+    glm::ivec3     breakTarget{0, -1, 0};
+    float          breakProgress = 0.0f;
+    bool           isBreaking    = false;
 
     WorldState()
         : camera(SPAWN_POS)
@@ -142,8 +164,30 @@ int main() {
         return 1;
     }
 
+    Shader skyShader;
+    if (!skyShader.loadFromFiles("assets/shaders/sky.vert",
+                                  "assets/shaders/sky.frag")) {
+        std::fprintf(stderr, "Failed to load sky shaders\n");
+        return 1;
+    }
+
     TextureAtlas atlas;
     atlas.generate();
+
+    // --- Fullscreen quad for sky ---
+    float skyQuad[] = {
+        -1.0f, -1.0f,   1.0f, -1.0f,   1.0f,  1.0f,
+        -1.0f, -1.0f,   1.0f,  1.0f,  -1.0f,  1.0f,
+    };
+    GLuint skyVAO, skyVBO;
+    glGenVertexArrays(1, &skyVAO);
+    glGenBuffers(1, &skyVBO);
+    glBindVertexArray(skyVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, skyVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(skyQuad), skyQuad, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
 
     // --- GUI ---
     TextRenderer ui;
@@ -557,42 +601,70 @@ int main() {
             world->attackCooldown -= dt;
             if (world->attackCooldown < 0.0f) world->attackCooldown = 0.0f;
 
-            // --- Block break/place on rising edge ---
+            // --- Block break (progressive) / place ---
             bool curBreak = input.breakBlock;
             bool curPlace = input.placeBlock;
 
-            if (curBreak && !world->prevBreak) {
-                // Try entity raycast first (combat)
-                bool hitEntity = false;
-                if (world->attackCooldown <= 0.0f) {
-                    glm::vec3 eyePos = world->player.getEyePosition();
-                    glm::vec3 front  = world->player.getFront();
-                    auto eHit = world->entityMgr.raycastEntity(eyePos, front, 5.0f);
-                    if (eHit.hit) {
-                        hitEntity = true;
-                        // Knockback direction: from player toward entity (horizontal)
-                        glm::vec3 knockDir = front;
-                        knockDir.y = 0.0f;
-                        float len = std::sqrt(knockDir.x * knockDir.x + knockDir.z * knockDir.z);
-                        if (len > 0.01f) {
-                            knockDir.x /= len;
-                            knockDir.z /= len;
-                        }
-                        world->entityMgr.damageEntity(eHit.entityIndex, 4.0f, knockDir);
-                        world->attackCooldown = 0.5f;
-                    }
-                }
-                // If no entity hit, proceed with block breaking
-                if (!hitEntity) {
-                    world->player.breakBlock(
-                        [&](int bx, int by, int bz, BlockType bt) { world->chunkMgr.setBlock(bx, by, bz, bt); },
-                        blockAccessor);
+            auto blockSetter = [&](int bx, int by, int bz, BlockType bt) {
+                world->chunkMgr.setBlock(bx, by, bz, bt);
+            };
+
+            // Rising edge: try entity combat first
+            if (curBreak && !world->prevBreak && world->attackCooldown <= 0.0f) {
+                glm::vec3 eyePos = world->player.getEyePosition();
+                glm::vec3 front  = world->player.getFront();
+                auto eHit = world->entityMgr.raycastEntity(eyePos, front, 5.0f);
+                if (eHit.hit) {
+                    glm::vec3 knockDir = front;
+                    knockDir.y = 0.0f;
+                    float len = std::sqrt(knockDir.x * knockDir.x + knockDir.z * knockDir.z);
+                    if (len > 0.01f) { knockDir.x /= len; knockDir.z /= len; }
+                    world->entityMgr.damageEntity(eHit.entityIndex, 4.0f, knockDir);
+                    world->attackCooldown = 0.5f;
                 }
             }
+
+            // Continuous block breaking while held
+            if (curBreak && world->attackCooldown <= 0.0f) {
+                auto hit = world->player.raycast(blockAccessor);
+                if (hit.hit) {
+                    BlockType targetType = blockAccessor(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z);
+                    float hardness = getBlockHardness(targetType);
+
+                    // Different target or first frame? reset progress
+                    if (!world->isBreaking || world->breakTarget != hit.blockPos) {
+                        world->breakTarget   = hit.blockPos;
+                        world->breakProgress = 0.0f;
+                        world->isBreaking    = true;
+                    }
+
+                    if (hardness < 0.0f) {
+                        // Unbreakable
+                        world->breakProgress = 0.0f;
+                    } else if (hardness <= 0.0f) {
+                        // Instant break
+                        world->breakProgress = 1.0f;
+                    } else {
+                        world->breakProgress += dt / hardness;
+                    }
+
+                    if (world->breakProgress >= 1.0f) {
+                        world->player.breakBlock(blockSetter, blockAccessor);
+                        world->isBreaking    = false;
+                        world->breakProgress = 0.0f;
+                    }
+                } else {
+                    world->isBreaking    = false;
+                    world->breakProgress = 0.0f;
+                }
+            } else {
+                world->isBreaking    = false;
+                world->breakProgress = 0.0f;
+            }
+
+            // Place on rising edge only
             if (curPlace && !world->prevPlace) {
-                world->player.placeBlock(
-                    [&](int bx, int by, int bz, BlockType bt) { world->chunkMgr.setBlock(bx, by, bz, bt); },
-                    blockAccessor);
+                world->player.placeBlock(blockSetter, blockAccessor);
             }
 
             world->prevBreak = curBreak;
@@ -629,14 +701,30 @@ int main() {
             world->chunkMgr.update(world->player.getPosition());
 
             // --- Render world ---
-            glClearColor(sky.skyColor.r, sky.skyColor.g, sky.skyColor.b, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             glm::mat4 vp = world->camera.getProjectionMatrix(window.getAspectRatio())
                           * world->camera.getViewMatrix();
+            glm::mat4 invVP = glm::inverse(vp);
 
             world->frustum.update(vp);
 
+            // --- Sky pass (fullscreen quad, no depth) ---
+            glDisable(GL_DEPTH_TEST);
+            skyShader.use();
+            skyShader.setMat4("uInvVP", invVP);
+            skyShader.setVec3("uCameraPos", world->camera.getPosition());
+            skyShader.setVec3("uSunDirection", sky.sunDirection);
+            skyShader.setVec3("uZenithColor", sky.zenithColor);
+            skyShader.setVec3("uHorizonColor", sky.horizonColor);
+            skyShader.setFloat("uSunlight", sky.sunlight);
+            skyShader.setFloat("uTime", static_cast<float>(now));
+            glBindVertexArray(skyVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            glEnable(GL_DEPTH_TEST);
+
+            // --- Block pass ---
             blockShader.use();
             blockShader.setMat4("uViewProjection", vp);
             blockShader.setVec3("uCameraPos", world->camera.getPosition());
@@ -645,6 +733,8 @@ int main() {
             blockShader.setFloat("uFogDensity", FOG_DENSITY);
             blockShader.setVec3("uFogColor",  sky.fogColor);
             blockShader.setVec3("uSunDirection", sky.sunDirection);
+            blockShader.setFloat("uSunlight", sky.sunlight);
+            blockShader.setVec3("uSkyColor", sky.skyColor);
             blockShader.setFloat("uTime", static_cast<float>(now));
             blockShader.setInt("uTextureAtlas", 0);
 
@@ -662,14 +752,27 @@ int main() {
             // --- Entities ---
             world->entityMgr.render(vp);
 
-            // --- Block highlight ---
+            // --- Block highlight with breaking progress ---
             auto hit = world->player.raycast(blockAccessor);
             if (hit.hit) {
                 glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(hit.blockPos));
                 lineShader.use();
                 lineShader.setMat4("uMVP", vp * model);
-                lineShader.setVec4("uColor", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-                glLineWidth(2.0f);
+
+                // Colour reflects breaking progress: black → red → white
+                glm::vec4 hlColor(0.0f, 0.0f, 0.0f, 1.0f);
+                float lw = 2.0f;
+                if (world->isBreaking && world->breakTarget == hit.blockPos) {
+                    float p = world->breakProgress;
+                    if (p < 0.5f) {
+                        hlColor = glm::vec4(p * 2.0f, 0.0f, 0.0f, 1.0f);
+                    } else {
+                        hlColor = glm::vec4(1.0f, (p - 0.5f) * 2.0f, (p - 0.5f) * 2.0f, 1.0f);
+                    }
+                    lw = 2.0f + p * 3.0f;
+                }
+                lineShader.setVec4("uColor", hlColor);
+                glLineWidth(lw);
                 glBindVertexArray(hlVAO);
                 glDrawArrays(GL_LINES, 0, 24);
                 glBindVertexArray(0);

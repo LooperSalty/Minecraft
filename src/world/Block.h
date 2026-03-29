@@ -48,5 +48,6 @@ bool isBlockOpaque(BlockType type);
 bool isBlockSolid(BlockType type);
 bool isBlockCross(BlockType type);
 bool isBlockTransparent(BlockType type);
+float getBlockHardness(BlockType type);   // seconds to break by hand; -1 = unbreakable
 
 } // namespace voxelforge

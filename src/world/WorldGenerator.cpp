@@ -25,7 +25,7 @@ void WorldGenerator::generate(Chunk& chunk) const {
             int worldZ = chunkZ * CHUNK_DEPTH + z;
 
             Biome biome = m_biomes.getBiome(worldX, worldZ);
-            int height = m_terrain.getHeight(worldX, worldZ, biome);
+            int height = m_terrain.getBlendedHeight(worldX, worldZ, m_biomes);
 
             if (biome == Biome::ExtremeHills) hasExtremeHills = true;
 

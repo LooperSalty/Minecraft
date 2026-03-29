@@ -367,7 +367,7 @@ void TextureAtlas::generate() {
     }
 
     // ================================================================
-    // 13 OakLeaves - Dark green with holes/transparency spots
+    // 13 OakLeaves - Dark green with alpha-cutout holes
     // ================================================================
     {
         int tx = 13, ty = 0;
@@ -376,15 +376,14 @@ void TextureAtlas::generate() {
                 float n = noise2D(x, y, 1400);
                 float hole = noise2D(x * 5, y * 5, 1401);
                 int variation = static_cast<int>((n - 0.5f) * 35.0f);
-                // Leaf transparency holes
+                // Leaf cutout holes: fully transparent so shader discards
                 if (hole > 0.82f) {
-                    setpx(tx, ty, x, y, 40 + variation, 80 + variation, 20 + variation, 100);
+                    setpx(tx, ty, x, y, 0, 0, 0, 0);
                 } else {
                     int r = 56 + variation, g = 118 + variation, b = 29 + variation;
-                    // Lighter leaf highlights
                     float hi = noise2D(x * 3, y * 3, 1402);
                     if (hi > 0.7f) { r += 15; g += 20; b += 10; }
-                    setpx(tx, ty, x, y, r, g, b, 220);
+                    setpx(tx, ty, x, y, r, g, b, 255);
                 }
             }
         }
@@ -433,17 +432,20 @@ void TextureAtlas::generate() {
     }
 
     // ================================================================
-    // 16 BirchLeaves
+    // 16 BirchLeaves (index 16 → col=0, row=1 with 16-col layout)
     // ================================================================
     {
-        int tx = 16, ty = 0;
+        int tx = 0, ty = 1;
         for (int y = 0; y < TILE_SIZE; ++y) {
             for (int x = 0; x < TILE_SIZE; ++x) {
                 float n = noise2D(x, y, 1700);
                 int variation = static_cast<int>((n - 0.5f) * 28.0f);
                 float hole = noise2D(x * 5, y * 5, 1701);
-                int a = (hole > 0.82f) ? 100 : 220;
-                setpx(tx, ty, x, y, 100 + variation, 160 + variation, 70 + variation, a);
+                if (hole > 0.82f) {
+                    setpx(tx, ty, x, y, 0, 0, 0, 0);
+                } else {
+                    setpx(tx, ty, x, y, 100 + variation, 160 + variation, 70 + variation, 255);
+                }
             }
         }
     }
@@ -476,8 +478,11 @@ void TextureAtlas::generate() {
                 float n = noise2D(x, y, 1900);
                 int variation = static_cast<int>((n - 0.5f) * 20.0f);
                 float hole = noise2D(x * 5, y * 5, 1901);
-                int a = (hole > 0.8f) ? 100 : 220;
-                setpx(tx, ty, x, y, 30 + variation, 80 + variation, 25 + variation, a);
+                if (hole > 0.8f) {
+                    setpx(tx, ty, x, y, 0, 0, 0, 0);
+                } else {
+                    setpx(tx, ty, x, y, 30 + variation, 80 + variation, 25 + variation, 255);
+                }
             }
         }
     }
@@ -1204,11 +1209,15 @@ void TextureAtlas::bind(int unit) const {
 }
 
 void TextureAtlas::getUV(uint8_t texIdx, float& u0, float& v0, float& u1, float& v1) {
-    int col = texIdx % TILES_PER_ROW;
-    int row = texIdx / TILES_PER_ROW;
-    constexpr float s = 1.0f / TILES_PER_ROW;
-    u0 = col * s;  v0 = row * s;
-    u1 = u0 + s;   v1 = v0 + s;
+    // Atlas is laid out in 16-column rows (not 32) despite 512px / 16px = 32 fitting.
+    // Tiles 0-15 in row 0, 16-31 in row 1, 32-47 in row 2, etc.
+    constexpr int COLS = 16;
+    int col = texIdx % COLS;
+    int row = texIdx / COLS;
+    constexpr float tileU = static_cast<float>(TILE_SIZE) / ATLAS_SIZE;
+    constexpr float tileV = static_cast<float>(TILE_SIZE) / ATLAS_SIZE;
+    u0 = col * tileU;  v0 = row * tileV;
+    u1 = u0 + tileU;   v1 = v0 + tileV;
 }
 
 } // namespace voxelforge

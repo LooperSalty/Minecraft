@@ -22,11 +22,11 @@ static constexpr BlockData BLOCK_DATA[] = {
     {"water",          false, false, 0,  {11, 11, 11, 11, 11, 11}},
     {"lava",           false, false, 15, {12, 12, 12, 12, 12, 12}},
     // Phase 1
-    {"oak_leaves",     true,  true,  0,  {13, 13, 13, 13, 13, 13}},
+    {"oak_leaves",     false, true,  0,  {13, 13, 13, 13, 13, 13}},
     {"birch_log",      true,  true,  0,  {15, 15, 14, 14, 14, 14}},
-    {"birch_leaves",   true,  true,  0,  {16, 16, 16, 16, 16, 16}},
+    {"birch_leaves",   false, true,  0,  {16, 16, 16, 16, 16, 16}},
     {"spruce_log",     true,  true,  0,  {5,  5,  17, 17, 17, 17}},
-    {"spruce_leaves",  true,  true,  0,  {18, 18, 18, 18, 18, 18}},
+    {"spruce_leaves",  false, true,  0,  {18, 18, 18, 18, 18, 18}},
     {"coal_ore",       true,  true,  0,  {19, 19, 19, 19, 19, 19}},
     {"iron_ore",       true,  true,  0,  {20, 20, 20, 20, 20, 20}},
     {"gold_ore",       true,  true,  0,  {21, 21, 21, 21, 21, 21}},
@@ -85,10 +85,67 @@ bool isBlockCross(BlockType type) {
 bool isBlockTransparent(BlockType type) {
     return type == BlockType::Water ||
            type == BlockType::Glass ||
-           type == BlockType::OakLeaves ||
-           type == BlockType::BirchLeaves ||
-           type == BlockType::SpruceLeaves ||
            type == BlockType::Ice;
+}
+
+float getBlockHardness(BlockType type) {
+    switch (type) {
+        case BlockType::Air:            return 0.0f;
+        case BlockType::Bedrock:        return -1.0f;
+        case BlockType::Water:          return -1.0f;
+        case BlockType::Lava:           return -1.0f;
+        // Instant break
+        case BlockType::TallGrass:      return 0.0f;
+        case BlockType::Poppy:          return 0.0f;
+        case BlockType::Dandelion:      return 0.0f;
+        case BlockType::DeadBush:       return 0.0f;
+        case BlockType::LilyPad:        return 0.0f;
+        case BlockType::MushroomRed:    return 0.0f;
+        case BlockType::MushroomBrown:  return 0.0f;
+        case BlockType::TNT:            return 0.0f;
+        // Soft blocks
+        case BlockType::SnowLayer:      return 0.15f;
+        case BlockType::OakLeaves:      return 0.3f;
+        case BlockType::BirchLeaves:    return 0.3f;
+        case BlockType::SpruceLeaves:   return 0.3f;
+        case BlockType::Vine:           return 0.3f;
+        case BlockType::Glass:          return 0.45f;
+        case BlockType::Cactus:         return 0.6f;
+        case BlockType::Ice:            return 0.7f;
+        case BlockType::Dirt:           return 0.75f;
+        case BlockType::Sand:           return 0.75f;
+        case BlockType::GrassBlock:     return 0.9f;
+        case BlockType::Gravel:         return 0.9f;
+        case BlockType::Clay:           return 0.9f;
+        case BlockType::Mycelium:       return 0.9f;
+        case BlockType::SnowBlock:      return 1.0f;
+        case BlockType::Pumpkin:        return 1.5f;
+        case BlockType::Melon:          return 1.5f;
+        case BlockType::Bookshelf:      return 2.25f;
+        // Wood
+        case BlockType::OakLog:         return 3.0f;
+        case BlockType::BirchLog:       return 3.0f;
+        case BlockType::SpruceLog:      return 3.0f;
+        case BlockType::OakPlanks:      return 3.0f;
+        case BlockType::CraftingTable:  return 3.75f;
+        case BlockType::ChestBlock:     return 3.75f;
+        case BlockType::Sandstone:      return 4.0f;
+        // Stone
+        case BlockType::Stone:          return 7.5f;
+        case BlockType::Cobblestone:    return 10.0f;
+        case BlockType::Bricks:         return 10.0f;
+        case BlockType::MossyCobblestone: return 10.0f;
+        // Ores (slow by hand)
+        case BlockType::CoalOre:        return 15.0f;
+        case BlockType::IronOre:        return 15.0f;
+        case BlockType::GoldOre:        return 15.0f;
+        case BlockType::DiamondOre:     return 15.0f;
+        case BlockType::RedstoneOre:    return 15.0f;
+        case BlockType::LapisOre:       return 15.0f;
+        case BlockType::EmeraldOre:     return 15.0f;
+        case BlockType::Furnace:        return 17.5f;
+        default:                        return 1.5f;
+    }
 }
 
 } // namespace voxelforge
