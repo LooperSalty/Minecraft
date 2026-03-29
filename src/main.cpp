@@ -136,7 +136,24 @@ struct WorldState {
         : camera(SPAWN_POS)
         , player(SPAWN_POS)
         , chunkMgr(WORLD_SEED, RENDER_DIST)
-    {}
+    {
+        // Pre-generate chunks around spawn so the player doesn't fall
+        chunkMgr.preloadSpawnArea(SPAWN_POS);
+
+        // Find actual surface height at spawn coordinates
+        int spawnX = static_cast<int>(SPAWN_POS.x);
+        int spawnZ = static_cast<int>(SPAWN_POS.z);
+        int surfaceY = 80;
+        for (int y = 255; y >= 0; --y) {
+            if (isBlockSolid(chunkMgr.getBlock(spawnX, y, spawnZ))) {
+                surfaceY = y + 1;
+                break;
+            }
+        }
+        glm::vec3 safeSpawn(SPAWN_POS.x, static_cast<float>(surfaceY + 1), SPAWN_POS.z);
+        player.setPosition(safeSpawn);
+        camera.setPosition(player.getEyePosition());
+    }
 };
 
 int main() {
@@ -590,6 +607,9 @@ int main() {
                 return world->chunkMgr.getBlock(bx, by, bz);
             };
 
+            // --- World update (BEFORE player so chunks exist for collision) ---
+            world->chunkMgr.update(world->player.getPosition());
+
             // --- Player update ---
             world->player.update(dt, input, blockAccessor);
 
@@ -690,15 +710,27 @@ int main() {
                 }
             }
 
+            // --- Void kill: respawn if fallen below Y=-64 ---
+            if (world->player.getPosition().y < -64.0f) {
+                int sx = static_cast<int>(SPAWN_POS.x);
+                int sz = static_cast<int>(SPAWN_POS.z);
+                int sy = 80;
+                for (int y = 255; y >= 0; --y) {
+                    if (isBlockSolid(world->chunkMgr.getBlock(sx, y, sz))) {
+                        sy = y + 1; break;
+                    }
+                }
+                world->player.setPosition(glm::vec3(SPAWN_POS.x,
+                    static_cast<float>(sy + 1), SPAWN_POS.z));
+                world->player.takeDamage(5.0f);
+            }
+
             // --- Check death ---
             if (world->player.getHealth() <= 0.0f && !world->creativeMode) {
                 state = GameState::Dead;
                 window.setCursorMode(GLFW_CURSOR_NORMAL);
                 break;
             }
-
-            // --- World update ---
-            world->chunkMgr.update(world->player.getPosition());
 
             // --- Render world ---
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

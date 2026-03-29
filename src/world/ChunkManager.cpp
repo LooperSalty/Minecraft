@@ -97,6 +97,23 @@ void ChunkManager::rebuildMesh(LoadedChunk& lc) {
     lc.meshDirty = false;
 }
 
+// ---------- preload spawn area synchronously ----------
+
+void ChunkManager::preloadSpawnArea(const glm::vec3& spawnPos) {
+    int centerCX = static_cast<int>(std::floor(spawnPos.x / CHUNK_WIDTH));
+    int centerCZ = static_cast<int>(std::floor(spawnPos.z / CHUNK_DEPTH));
+
+    // Generate a 5x5 area and build all meshes immediately
+    for (int dx = -2; dx <= 2; ++dx) {
+        for (int dz = -2; dz <= 2; ++dz) {
+            ensureChunk(centerCX + dx, centerCZ + dz);
+        }
+    }
+    for (auto& [k, lc] : m_chunks) {
+        if (lc.meshDirty) rebuildMesh(lc);
+    }
+}
+
 // ---------- per-frame update ----------
 
 void ChunkManager::update(const glm::vec3& playerPos) {

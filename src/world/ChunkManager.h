@@ -15,6 +15,7 @@ public:
     ChunkManager(int64_t seed, int renderDistance);
 
     void update(const glm::vec3& playerPos);
+    void preloadSpawnArea(const glm::vec3& spawnPos);
     void renderAll(const Shader& shader, const Frustum& frustum) const;
     void renderTransparent(const Shader& shader, const Frustum& frustum) const;
 
