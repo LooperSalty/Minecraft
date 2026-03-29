@@ -78,6 +78,17 @@ bool Inventory::removeItem(int slot, int count) {
     return true;
 }
 
+void Inventory::fillCreative() {
+    int slot = 0;
+    for (uint16_t i = 1; i < static_cast<uint16_t>(BlockType::COUNT) && slot < TOTAL_SLOTS; ++i) {
+        BlockType bt = static_cast<BlockType>(i);
+        // Skip non-placeable blocks
+        if (bt == BlockType::Air) continue;
+        m_slots[slot] = { bt, MAX_STACK };
+        ++slot;
+    }
+}
+
 void Inventory::swapSlots(int a, int b) {
     if (a < 0 || a >= TOTAL_SLOTS || b < 0 || b >= TOTAL_SLOTS) return;
     if (a == b) return;

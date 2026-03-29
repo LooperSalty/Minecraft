@@ -31,6 +31,7 @@ public:
     bool addItem(BlockType type, int count = 1);
     bool removeItem(int slot, int count = 1);
     void swapSlots(int a, int b);
+    void fillCreative();   // fill all slots with every block type
 
     BlockType getSelectedBlockType() const;
     int getSelectedCount() const;

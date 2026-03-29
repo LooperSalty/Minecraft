@@ -569,6 +569,9 @@ int main() {
             // F5: creative/survival toggle
             if (InputManager::isKeyJustPressed(GLFW_KEY_F5)) {
                 world->creativeMode = !world->creativeMode;
+                if (world->creativeMode) {
+                    world->player.getInventory().fillCreative();
+                }
                 std::printf("Mode: %s\n", world->creativeMode ? "Creative" : "Survival");
             }
 
@@ -665,7 +668,8 @@ int main() {
                         // Instant break
                         world->breakProgress = 1.0f;
                     } else {
-                        world->breakProgress += dt / hardness;
+                        // 3x speed multiplier (no tools implemented yet)
+                        world->breakProgress += dt / hardness * 3.0f;
                     }
 
                     if (world->breakProgress >= 1.0f) {
@@ -883,6 +887,8 @@ int main() {
             blockShader.setFloat("uFogDensity", FOG_DENSITY);
             blockShader.setVec3("uFogColor",  sky.fogColor);
             blockShader.setVec3("uSunDirection", sky.sunDirection);
+            blockShader.setFloat("uSunlight", sky.sunlight);
+            blockShader.setVec3("uSkyColor", sky.skyColor);
             blockShader.setFloat("uTime", static_cast<float>(glfwGetTime()));
             blockShader.setInt("uTextureAtlas", 0);
 
@@ -950,6 +956,8 @@ int main() {
             blockShader.setFloat("uFogDensity", FOG_DENSITY);
             blockShader.setVec3("uFogColor",  sky.fogColor);
             blockShader.setVec3("uSunDirection", sky.sunDirection);
+            blockShader.setFloat("uSunlight", sky.sunlight);
+            blockShader.setVec3("uSkyColor", sky.skyColor);
             blockShader.setFloat("uTime", static_cast<float>(glfwGetTime()));
             blockShader.setInt("uTextureAtlas", 0);
 
@@ -980,7 +988,18 @@ int main() {
                               {0.2f, 0.6f, 0.2f, 0.9f}, {1.0f, 1.0f, 1.0f, 1.0f},
                               w, h, mousePos, mouseClick)) {
                 world->player.resetHealth();
-                world->player.setPosition(SPAWN_POS);
+                // Find surface at spawn
+                {
+                    int sx = static_cast<int>(SPAWN_POS.x), sz = static_cast<int>(SPAWN_POS.z);
+                    int sy = 80;
+                    for (int y = 255; y >= 0; --y) {
+                        if (isBlockSolid(world->chunkMgr.getBlock(sx, y, sz))) {
+                            sy = y + 1; break;
+                        }
+                    }
+                    world->player.setPosition(glm::vec3(
+                        SPAWN_POS.x, static_cast<float>(sy + 1), SPAWN_POS.z));
+                }
                 state = GameState::Playing;
                 window.setCursorMode(GLFW_CURSOR_DISABLED);
                 InputManager::resetFirstMouse();
@@ -1022,6 +1041,8 @@ int main() {
             blockShader.setFloat("uFogDensity", FOG_DENSITY);
             blockShader.setVec3("uFogColor",  sky.fogColor);
             blockShader.setVec3("uSunDirection", sky.sunDirection);
+            blockShader.setFloat("uSunlight", sky.sunlight);
+            blockShader.setVec3("uSkyColor", sky.skyColor);
             blockShader.setFloat("uTime", static_cast<float>(glfwGetTime()));
             blockShader.setInt("uTextureAtlas", 0);
 

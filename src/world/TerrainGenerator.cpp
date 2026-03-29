@@ -74,8 +74,8 @@ float TerrainGenerator::computeRawHeight(int worldX, int worldZ, Biome biome,
         case Biome::ExtremeHills: {
             float plateauNoise = octavePerlin2D(fx, fz, 2, 0.5f, 1.0f / 400.0f, baseSeed + 7800);
             // Scale mountain extra by how much variation is present (smooth at biome edges)
-            float mountainStrength = std::clamp(bVariation / 45.0f, 0.0f, 1.0f);
-            height += ridge * 20.0f * mountainStrength;
+            float mountainStrength = std::clamp(bVariation / 18.0f, 0.0f, 1.0f);
+            height += ridge * 10.0f * mountainStrength;
 
             if (plateauNoise > 0.4f && height > static_cast<float>(SEA_LEVEL) + 30.0f) {
                 float plateauLevel = static_cast<float>(SEA_LEVEL) + 35.0f +
@@ -111,7 +111,7 @@ float TerrainGenerator::computeRawHeight(int worldX, int worldZ, Biome biome,
     float riverDist = getRiverValue(worldX, worldZ);
     if (riverDist < 0.04f && biome != Biome::Ocean && biome != Biome::Beach) {
         float riverFactor = 1.0f - (riverDist / 0.04f);
-        height -= riverFactor * 8.0f;
+        height -= riverFactor * 5.0f;
     }
 
     // Erosion deposit
@@ -134,7 +134,7 @@ int TerrainGenerator::getBlendedHeight(int worldX, int worldZ,
     // Blend biome parameters over a neighborhood to smooth transitions.
     // Without this, adjacent biomes with different baseHeight/heightVariation
     // create sharp cliffs at the boundary.
-    constexpr int R = 4;      // blend radius in blocks
+    constexpr int R = 8;      // blend radius in blocks (was 4 — too small)
     constexpr int STEP = 2;   // sample every 2 blocks for performance
     float totalWeight = 0.0f;
     float blendedBase = 0.0f;

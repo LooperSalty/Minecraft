@@ -6,16 +6,16 @@
 namespace voxelforge {
 
 static const std::array<BiomeData, static_cast<size_t>(Biome::COUNT)> s_biomeTable = {{
-    { "Plains",         0.0f,   3.0f,  1 },
-    { "Forest",         0.0f,   5.0f,  8 },
-    { "BirchForest",    0.0f,   4.0f,  8 },
-    { "Desert",         0.0f,   2.0f,  0 },
-    { "ExtremeHills",  12.0f,  45.0f,  1 },  // More dramatic mountains (was 30)
+    { "Plains",         0.5f,   4.0f,  1 },
+    { "Forest",         0.5f,   5.0f,  8 },
+    { "BirchForest",    0.5f,   4.0f,  8 },
+    { "Desert",         0.5f,   2.5f,  0 },
+    { "ExtremeHills",   6.0f,  18.0f,  1 },  // Toned down (was 12/45 — way too extreme)
     { "Taiga",          2.0f,   5.0f,  7 },
-    { "Swamp",         -3.0f,   2.0f,  3 },
-    { "Ocean",        -25.0f,   8.0f,  0 },  // More varied ocean floor (was 5)
-    { "Beach",          0.0f,   1.0f,  0 },
-    { "MushroomIsland", 2.0f,   4.0f,  0 },  // Rare island biome
+    { "Swamp",         -2.0f,   1.5f,  3 },
+    { "Ocean",        -20.0f,   6.0f,  0 },
+    { "Beach",          0.0f,   0.8f,  0 },
+    { "MushroomIsland", 2.0f,   4.0f,  0 },
 }};
 
 const BiomeData& getBiomeData(Biome biome) {
